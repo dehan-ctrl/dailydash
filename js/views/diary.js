@@ -152,18 +152,18 @@ async function searchFoodSources(query) {
     ? { source: i === 0 ? 'packaged-food' : 'USDA', message: r.reason?.message || 'unavailable' }
     : null).filter(Boolean);
   const foods = [...off, ...usda];
-  const usingDemoUsda = !settings.usdaApiKey?.trim();
+  const usingBundledUsda = !settings.usdaApiKey?.trim();
   let msg = null;
   if (foods.length && errors.some((e) => e.source === 'packaged-food')) {
-    msg = { type: 'info', text: usingDemoUsda
-      ? 'Showing USDA demo results. Add a free USDA key in Settings if searches start rate-limiting.'
+    msg = { type: 'info', text: usingBundledUsda
+      ? 'Showing USDA results with the shared app key. Add your own USDA key in Settings if searches start rate-limiting.'
       : 'Showing USDA results. Packaged-food search is temporarily unavailable.' };
   } else if (foods.length && errors.some((e) => e.source === 'USDA')) {
-    msg = { type: 'info', text: usingDemoUsda
-      ? 'Showing packaged-food results. USDA demo search is rate-limited; add a free key in Settings for more reliability.'
+    msg = { type: 'info', text: usingBundledUsda
+      ? 'Showing packaged-food results. The shared USDA key may be rate-limited; add your own key in Settings for more reliability.'
       : 'Showing packaged-food results. USDA search is temporarily unavailable.' };
   } else if (!foods.length && errors.length === settled.length) {
-    msg = { type: 'error', text: `Food search is temporarily unavailable (${errors.map((e) => e.message).join('; ')}). Try again, add a custom food, or add a USDA key in Settings.` };
+    msg = { type: 'error', text: `Food search is temporarily unavailable (${errors.map((e) => e.message).join('; ')}). Try again, add a custom food, or add your own USDA key in Settings.` };
   } else if (!foods.length) {
     msg = { type: 'empty', text: `No foods with usable nutrition found for "${query}". Try another search or add a custom food.` };
   }

@@ -1,7 +1,7 @@
-// USDA FoodData Central client. A saved key is preferred; DEMO_KEY is a
-// rate-limited public fallback so search still works on a fresh install.
+// USDA FoodData Central client. A saved key is preferred; the bundled public
+// app key keeps search working on a fresh install.
 const NUTRIENT = { kcal: 1008, p: 1003, c: 1005, f: 1004 };
-const DEFAULT_API_KEY = 'DEMO_KEY';
+const DEFAULT_API_KEY = 'ZfG8R935gi2GI9b0n1C30bx90eJ4KS65iqRocf4m';
 
 export function normalizeUsda(f) {
   const by = {};

@@ -51,7 +51,7 @@ test('USDA search URL uses a saved key when present', () => {
   assert.equal(u.searchParams.get('api_key'), 'real-key');
   assert.equal(u.searchParams.get('query'), 'banana bread');
 });
-test('USDA search URL falls back to the public demo key', () => {
+test('USDA search URL falls back to the bundled public key', () => {
   const u = new URL(buildUsdaSearchUrl('oats', ''));
-  assert.equal(u.searchParams.get('api_key'), 'DEMO_KEY');
+  assert.equal(u.searchParams.get('api_key'), 'ZfG8R935gi2GI9b0n1C30bx90eJ4KS65iqRocf4m');
 });
