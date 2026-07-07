@@ -1,7 +1,7 @@
 import { dstr, addDays, dowMon } from '../util.js';
 import { dayMacros } from '../engine/planner.js';
 import { targetsFor, activeTargets } from '../engine/targets.js';
-import { normalizeServings, servingMacros, scaleMacros, entryFromPortion, reconcileCustomFood } from '../food/portion.js';
+import { normalizeServings, servingMacros, scaleMacros, entryFromPortion, reconcileCustomFood, customMacroSourceServing } from '../food/portion.js';
 import { lookupBarcode, searchFoods } from '../food/off.js';
 import { searchUsda, hydrateUsdaFood } from '../food/usda.js';
 import { startScan, stopScan } from '../food/barcode.js';
@@ -215,6 +215,7 @@ function detailView() {
 }
 
 function editView(food, servings) {
+  const source = String(food.id).startsWith('custom:') ? customMacroSourceServing({ ...food, servings }) : null;
   const row = (s, i, fixed = false) => fixed
     ? `<div class="servedit fixed" data-servrow="${i}"><span class="muted">100 g (always available)</span></div>`
     : `<div class="servedit" data-servrow="${i}">
@@ -236,6 +237,7 @@ function editView(food, servings) {
     <label>Carbs (g)<input id="ec" type="number" step="0.1" value="${food.per100g.c}"></label>
     <label>Fat (g)<input id="ef" type="number" step="0.1" value="${food.per100g.f}"></label>
   </div>
+  ${source ? `<p class="hint sourcehint">100 g is calculated from ${source.label} (${source.grams} g).</p>` : ''}
   <label>Servings</label>
   ${servings.map((s, i) => s.grams === 100
     ? row(s, i, true)

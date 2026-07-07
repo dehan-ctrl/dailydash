@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { normalizeServings, portionMacros, entryFromPortion, reconcileCustomFood } from '../js/food/portion.js';
+import { normalizeServings, portionMacros, entryFromPortion, reconcileCustomFood, customMacroSourceServing } from '../js/food/portion.js';
 
 const oats = {
   id: 'off:1', label: 'Oats', brand: 'Bulk',
@@ -63,4 +63,10 @@ test('reconcileCustomFood derives 100 g macros from a sized serving', () => {
   });
   assert.deepEqual(food.per100g, { kcal: 500, p: 9.1, c: 68.2, f: 22.7 });
   assert.equal(food.servings[1].macros.kcal, 110);
+});
+test('customMacroSourceServing identifies the serving that drives 100 g macros', () => {
+  const serving = customMacroSourceServing({
+    servings: [{ label: '100 g', grams: 100 }, { label: '1 large cracker', grams: 22, macros: { kcal: 110, p: 2, c: 15, f: 5 } }],
+  });
+  assert.equal(serving.label, '1 large cracker');
 });
