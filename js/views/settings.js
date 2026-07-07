@@ -10,12 +10,26 @@ export async function mount(el, c) { root = el; ctx = c; render(); }
 
 async function render() {
   const s = await ctx.db.get('settings', 'main');
+  const profiles = await ctx.db.listProfiles();
+  const activeProfile = await ctx.db.getActiveProfile();
   const coach = latestTargets(await ctx.db.getAll('targets'));
   const imp = s.units === 'imperial';
   const { ft, in: inch } = cmToFtIn(s.heightCm);
   const rate = s.goal.rateKgPerWeek ?? 0;
   const custom = s.customTargets ?? { ...coachOnly(coach) };
   root.innerHTML = `
+  <div class="card"><h2>Users</h2>
+    <label>Current user</label>
+    <select id="profilepick">${profiles.map((p) =>
+      `<option value="${p.id}" ${p.id === activeProfile.id ? 'selected' : ''}>${p.name}</option>`).join('')}</select>
+    <div class="row" style="margin-top:8px">
+      <button class="ghost" id="addprofile">Add user</button>
+      <button class="ghost" id="renameprofile">Rename</button>
+      <button class="ghost danger" id="deleteprofile">Delete</button>
+    </div>
+    <p class="hint">Each user has separate logs, targets, foods, recipes, recents, and favorites on this device.</p>
+  </div>
+
   <div class="card"><h2>Coach settings</h2>
     <label>Goal</label><select id="gtype">${[
       ['lose', 'Lose weight'], ['maintain', 'Maintain'], ['gain', 'Gain weight'], ['reverse', 'Reverse diet'],
@@ -81,13 +95,44 @@ async function render() {
     <input type="file" id="impfile" accept=".json" hidden>
     <button class="ghost danger" id="wipe" style="margin-top:12px;width:100%">Erase all data</button>
   </div>`;
-  wire(s, coach);
+  wire(s, coach, profiles);
 }
 
 const coachOnly = (t) => ({ kcal: t.kcal, proteinG: t.proteinG, carbG: t.carbG, fatG: t.fatG });
 
-function wire(s, coach) {
+function wire(s, coach, profiles) {
   const q = (sel) => root.querySelector(sel);
+  q('#profilepick').onchange = async () => {
+    await ctx.db.setActiveProfile(q('#profilepick').value);
+    location.reload();
+  };
+  q('#addprofile').onclick = async () => {
+    const name = prompt('Name for the new user?');
+    if (name == null) return;
+    const p = await ctx.db.createProfile(name);
+    await ctx.db.setActiveProfile(p.id);
+    location.reload();
+  };
+  q('#renameprofile').onclick = async () => {
+    const id = q('#profilepick').value;
+    const p = profiles.find((x) => x.id === id);
+    const name = prompt('New name for this user?', p?.name || '');
+    if (name == null) return;
+    await ctx.db.renameProfile(id, name);
+    render();
+  };
+  q('#deleteprofile').onclick = async () => {
+    const id = q('#profilepick').value;
+    const p = profiles.find((x) => x.id === id);
+    if (!confirm(`Delete ${p?.name || 'this user'} and all of their data on this device? This cannot be undone.`)) return;
+    try {
+      await ctx.db.deleteProfile(id);
+    } catch (err) {
+      alert(err.message);
+      return;
+    }
+    location.reload();
+  };
   q('#units').onchange = async () => {
     s.units = q('#units').value;
     await ctx.db.put('settings', s, 'main');
