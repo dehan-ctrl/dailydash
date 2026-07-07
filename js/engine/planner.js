@@ -34,6 +34,16 @@ export function editDay(days, idx, wantKcal, floorKcal) {
   }
   for (const d of out) d.kcal = Math.round(d.kcal);
   out[idx].kcal = total - out.filter((_, i) => i !== idx).reduce((s, d) => s + d.kcal, 0);
+  // Repair rounding drift: ensure edited day doesn't fall below floor
+  let short = floorKcal - out[idx].kcal;
+  if (short > 0) {
+    out[idx].kcal = floorKcal;
+    for (const d of out.filter((x, i) => i !== idx && !x.locked)) {
+      if (short <= 0) break;
+      const give = Math.min(short, d.kcal - floorKcal);
+      d.kcal -= give; short -= give;
+    }
+  }
   const message = out[idx].kcal === Math.round(wantKcal) ? '' :
     `Clamped to ${out[idx].kcal} kcal — no other day can go below ${floorKcal} kcal.`;
   return { days: out, applied: true, message };
@@ -43,7 +53,9 @@ export function editDay(days, idx, wantKcal, floorKcal) {
 export function rescalePlan(days, newDailyKcal) {
   const f = (newDailyKcal * 7) / weeklyTotal(days);
   const out = days.map((d) => ({ ...d, kcal: Math.round(d.kcal * f) }));
-  out[0].kcal += newDailyKcal * 7 - weeklyTotal(out); // absorb rounding drift
+  const drift = newDailyKcal * 7 - weeklyTotal(out);
+  const target = out.find((d) => !d.locked) ?? out[0];
+  target.kcal += drift; // absorb rounding drift on an unlocked day
   return out;
 }
 

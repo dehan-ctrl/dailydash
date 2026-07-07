@@ -53,6 +53,7 @@ test('rescale keeps proportions and locks, hits new weekly total', () => {
   let p = editDay(defaultPlan(2000), 0, 2300, 1500).days;
   p[0].locked = true;
   const r = rescalePlan(p, 2100);
+  assert.equal(r[0].kcal, 2415); // locked day rescaled proportionally; drift on unlocked
   assert.equal(weeklyTotal(r), 14700);
   assert.equal(r[0].locked, true);
   assert.ok(r[0].kcal > r[1].kcal); // pattern survives
@@ -64,4 +65,25 @@ test('dayMacros holds protein constant and scales the rest', () => {
   assert.ok(m.carbG > 200 && m.fatG > 62);
   const low = dayMacros(1700, t);
   assert.ok(low.carbG < 200 && low.fatG < 62);
+});
+test('edited day never lands below the floor', () => {
+  // Main case: start from defaultPlan(1501) with floor 1500
+  const days = defaultPlan(1501);
+  const { days: result } = editDay(days, 0, 1200, 1500);
+  assert.ok(result[0].kcal >= 1500, `day 0 is ${result[0].kcal}, below 1500`);
+  for (let i = 1; i < 7; i++) {
+    assert.ok(result[i].kcal >= 1500, `day ${i} is ${result[i].kcal}, below 1500`);
+  }
+  assert.equal(weeklyTotal(result), 7 * 1501);
+
+  // Loop test: several odd totals with editDay to floor
+  for (const daily of [1507, 1511, 1523]) {
+    const p = defaultPlan(daily);
+    const { days: r } = editDay(p, 0, 1500, 1500);
+    assert.ok(r[0].kcal >= 1500, `day 0 for daily=${daily} is ${r[0].kcal}, below 1500`);
+    for (let i = 1; i < 7; i++) {
+      assert.ok(r[i].kcal >= 1500, `day ${i} for daily=${daily} is ${r[i].kcal}, below 1500`);
+    }
+    assert.equal(weeklyTotal(r), 7 * daily, `weekly total mismatch for daily=${daily}`);
+  }
 });
