@@ -181,6 +181,18 @@ button.loading::after {
 .macrogrid span { font-size: .72rem; color: var(--muted); }
 .macroedit { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
 .macroedit label { margin: 0; }
+.servedit {
+  display: grid;
+  grid-template-columns: minmax(0, 1.6fr) 72px repeat(4, minmax(0, 1fr)) 36px;
+  gap: 6px;
+  align-items: center;
+  padding: 6px 0;
+}
+.servedit.fixed {
+  grid-template-columns: 1fr;
+}
+.servedit.fixed .muted { margin: 0; }
+.servedit input { min-width: 0; padding: 8px 10px; }
 
 /* planner */
 .planday { display: grid; grid-template-columns: 40px 1fr 78px 42px; gap: 6px; align-items: center; padding: 6px 0; }

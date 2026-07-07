@@ -22,6 +22,13 @@ test('normalizeServings keeps an existing servings list intact', () => {
   const s = normalizeServings(oats);
   assert.deepEqual(s.map((x) => x.grams), [100, 80]);
 });
+test('normalizeServings preserves per-serving macros', () => {
+  const s = normalizeServings({
+    servings: [{ label: '1 egg', grams: 50, macros: { kcal: 70, p: 6, c: 0.4, f: 5 } }],
+  });
+  assert.deepEqual(s[0], { label: '100 g', grams: 100 });
+  assert.deepEqual(s[1], { label: '1 egg', grams: 50, macros: { kcal: 70, p: 6, c: 0.4, f: 5 } });
+});
 test('portionMacros scales per-100g values', () => {
   assert.deepEqual(portionMacros(oats.per100g, 50), { kcal: 195, p: 8.4, c: 33.1, f: 3.5 });
 });
@@ -36,4 +43,15 @@ test('entryFromPortion: half a 100 g serving', () => {
   const e = entryFromPortion(oats, oats.servings[0], 0.5);
   assert.equal(e.grams, 50);
   assert.equal(e.kcal, 195);
+});
+test('entryFromPortion uses serving macros when present', () => {
+  const egg = {
+    id: 'usda:1', label: 'Egg', brand: '',
+    per100g: { kcal: 155, p: 13, c: 1.1, f: 11 },
+    servings: [{ label: '100 g', grams: 100 }, { label: '1 large', grams: 50, macros: { kcal: 70, p: 6, c: 0.4, f: 5 } }],
+  };
+  const e = entryFromPortion(egg, egg.servings[1], 2);
+  assert.equal(e.grams, 100);
+  assert.equal(e.kcal, 140);
+  assert.equal(e.p, 12);
 });

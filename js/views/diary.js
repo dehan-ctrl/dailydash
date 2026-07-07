@@ -1,7 +1,7 @@
 import { dstr, addDays, dowMon } from '../util.js';
 import { dayMacros } from '../engine/planner.js';
 import { targetsFor, activeTargets } from '../engine/targets.js';
-import { normalizeServings, portionMacros, entryFromPortion } from '../food/portion.js';
+import { normalizeServings, servingMacros, scaleMacros, entryFromPortion } from '../food/portion.js';
 import { lookupBarcode, searchFoods } from '../food/off.js';
 import { searchUsda, hydrateUsdaFood } from '../food/usda.js';
 import { startScan, stopScan } from '../food/barcode.js';
@@ -99,9 +99,10 @@ async function render() {
 
 function entryPortionLabel(e) {
   if (e.unit === 'x') return 'quick add';
-  if (e.servingLabel) return `${e.qty} × ${e.servingLabel}`;
+  if (e.servingLabel && e.grams > 0) return `${e.qty} × ${e.servingLabel}`;
+  if (e.servingLabel) return e.servingLabel;
   if (e.unit === 'serving') return `${e.qty} serving`;
-  return `${e.grams} g`;
+  return e.grams > 0 ? `${e.grams} g` : 'portion';
 }
 
 function wire(log) {
@@ -194,7 +195,7 @@ function detailView() {
   const { food, servingIdx, qty } = sheet.picked;
   const servings = normalizeServings(food);
   const sv = servings[Math.min(servingIdx, servings.length - 1)];
-  const m = portionMacros(food.per100g, sv.grams * qty);
+  const m = scaleMacros(servingMacros(food, sv), qty);
   if (sheet.editing) return editView(food, servings);
   return `<div class="backbar"><button class="ghost" id="pback">‹ Back</button>
     <h2 style="flex:1">${food.label}</h2>
@@ -209,11 +210,22 @@ function detailView() {
     <div><b>${m.kcal}</b><span>Calories</span></div><div><b>${m.p}g</b><span>Protein</span></div>
     <div><b>${m.c}g</b><span>Carbs</span></div><div><b>${m.f}g</b><span>Fat</span></div>
   </div>
-  <p class="hint">${qty} × ${sv.label} = ${+(sv.grams * qty).toFixed(1)} g</p>
+  <p class="hint">${sv.grams > 0 ? `${qty} × ${sv.label} = ${+(sv.grams * qty).toFixed(1)} g` : `Serving macros are entered directly for ${sv.label}.`}</p>
   <button class="primary" id="paddconfirm">Add to ${MEALS[sheet.meal]}</button>`;
 }
 
 function editView(food, servings) {
+  const row = (s, i, fixed = false) => fixed
+    ? `<div class="servedit fixed" data-servrow="${i}"><span class="muted">100 g (always available)</span></div>`
+    : `<div class="servedit" data-servrow="${i}">
+        <input data-slabel="${i}" value="${s.label}" placeholder="Serving">
+        <input data-sgrams="${i}" type="number" step="0.1" value="${s.grams || ''}" placeholder="g">
+        <input data-skcal="${i}" type="number" step="0.1" value="${s.macros?.kcal ?? ''}" placeholder="kcal">
+        <input data-sp="${i}" type="number" step="0.1" value="${s.macros?.p ?? ''}" placeholder="P">
+        <input data-sc="${i}" type="number" step="0.1" value="${s.macros?.c ?? ''}" placeholder="C">
+        <input data-sf="${i}" type="number" step="0.1" value="${s.macros?.f ?? ''}" placeholder="F">
+        <button class="del" data-sdel="${i}">×</button>
+      </div>`;
   return `<div class="backbar"><button class="ghost" id="peditback">‹ Cancel</button>
     <h2 style="flex:1">Edit food</h2></div>
   <label>Name</label><input id="ename" value="${food.label}">
@@ -226,14 +238,17 @@ function editView(food, servings) {
   </div>
   <label>Servings</label>
   ${servings.map((s, i) => s.grams === 100
-    ? `<div class="servrow"><span class="muted">100 g (always available)</span><span></span><span></span></div>`
-    : `<div class="servrow"><input data-slabel="${i}" value="${s.label}">
-       <input data-sgrams="${i}" type="number" step="0.1" value="${s.grams}">
-       <button class="del" data-sdel="${i}">×</button></div>`).join('')}
-  <div class="servrow"><input id="nslabel" placeholder="e.g. 1 cup">
-    <input id="nsgrams" type="number" step="0.1" placeholder="grams">
+    ? row(s, i, true)
+    : row(s, i)).join('')}
+  <div class="servedit add">
+    <input id="nslabel" placeholder="e.g. 1 cup">
+    <input id="nsgrams" type="number" step="0.1" placeholder="g">
+    <input id="nskcal" type="number" step="0.1" placeholder="kcal">
+    <input id="nsp" type="number" step="0.1" placeholder="P">
+    <input id="nsc" type="number" step="0.1" placeholder="C">
+    <input id="nsf" type="number" step="0.1" placeholder="F">
     <button class="ghost" id="nsadd" style="padding:8px">+</button></div>
-  <p class="hint">Each serving is a name plus its weight in grams — log any amount as servings × that weight.</p>
+  <p class="hint">Each serving can be gram-based, macro-based, or both. If you enter macros, the app will use them for that serving instead of scaling from 100 g.</p>
   <button class="primary" id="esave">Save food</button>`;
 }
 
@@ -364,8 +379,9 @@ function wireSheet(el) {
   if (nsadd) nsadd.onclick = () => {
     keepEdits(el);
     const label = q('#nslabel').value.trim(), grams = +q('#nsgrams').value;
-    if (!label || !(grams > 0)) return;
-    sheet.picked.food.servings = [...normalizeServings(sheet.picked.food), { label, grams }];
+    const macros = readMacros(q, 'ns');
+    if (!label || !(grams > 0) && !macros) return;
+    sheet.picked.food.servings = [...normalizeServings(sheet.picked.food), { label, ...(grams > 0 ? { grams } : {}), ...(macros ? { macros } : {}) }];
     renderSheetStable();
   };
   el.querySelectorAll('[data-sdel]').forEach((b) => (b.onclick = () => {
@@ -427,8 +443,36 @@ function keepEdits(el) {
   };
   const servings = normalizeServings(food);
   el.querySelectorAll('[data-slabel]').forEach((inp) => { servings[+inp.dataset.slabel].label = inp.value; });
-  el.querySelectorAll('[data-sgrams]').forEach((inp) => { servings[+inp.dataset.sgrams].grams = +inp.value || servings[+inp.dataset.sgrams].grams; });
+  el.querySelectorAll('[data-sgrams]').forEach((inp) => {
+    const i = +inp.dataset.sgrams;
+    const v = +inp.value;
+    if (v > 0) servings[i].grams = v;
+    else delete servings[i].grams;
+  });
+  servings.forEach((serving, i) => setMacros(serving, q, i));
   food.servings = servings;
+}
+
+function readMacros(q, prefix) {
+  const kcal = +q(`#${prefix}kcal`)?.value || 0;
+  const p = +q(`#${prefix}p`)?.value || 0;
+  const c = +q(`#${prefix}c`)?.value || 0;
+  const f = +q(`#${prefix}f`)?.value || 0;
+  return (kcal || p || c || f) ? { kcal, p, c, f } : null;
+}
+
+function setMacros(serving, q, idx) {
+  const row = q(`[data-servrow="${idx}"]`);
+  if (!row) return;
+  const macros = {
+    kcal: +row.querySelector('[data-skcal]')?.value || 0,
+    p: +row.querySelector('[data-sp]')?.value || 0,
+    c: +row.querySelector('[data-sc]')?.value || 0,
+    f: +row.querySelector('[data-sf]')?.value || 0,
+  };
+  const has = macros.kcal || macros.p || macros.c || macros.f;
+  if (has) serving.macros = macros;
+  else delete serving.macros;
 }
 
 /* ---------- recipes ---------- */
