@@ -1,5 +1,7 @@
-// USDA FoodData Central client — only used when the user supplies an API key.
+// USDA FoodData Central client. A saved key is preferred; DEMO_KEY is a
+// rate-limited public fallback so search still works on a fresh install.
 const NUTRIENT = { kcal: 1008, p: 1003, c: 1005, f: 1004 };
+const DEFAULT_API_KEY = 'DEMO_KEY';
 
 export function normalizeUsda(f) {
   const by = {};
@@ -14,11 +16,14 @@ export function normalizeUsda(f) {
   };
 }
 
-export async function searchUsda(q, apiKey) {
-  if (!apiKey) return [];
-  const u = `https://api.nal.usda.gov/fdc/v1/foods/search?api_key=${encodeURIComponent(apiKey)}` +
+export function buildUsdaSearchUrl(q, apiKey) {
+  const key = apiKey?.trim() || DEFAULT_API_KEY;
+  return `https://api.nal.usda.gov/fdc/v1/foods/search?api_key=${encodeURIComponent(key)}` +
     `&query=${encodeURIComponent(q)}&pageSize=15&dataType=Foundation,SR%20Legacy,Branded`;
-  const r = await fetch(u);
+}
+
+export async function searchUsda(q, apiKey) {
+  const r = await fetch(buildUsdaSearchUrl(q, apiKey));
   if (!r.ok) throw new Error(`USDA error ${r.status}`);
   return ((await r.json()).foods || []).map(normalizeUsda).filter(Boolean);
 }

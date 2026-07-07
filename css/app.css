@@ -82,7 +82,11 @@ input:focus, select:focus { outline: 2px solid var(--accent); outline-offset: -1
 input[type='checkbox'], input[type='radio'] { width: auto; accent-color: var(--accent); }
 input[type='range'] { padding: 0; border: 0; background: none; accent-color: var(--accent); min-height: 32px; }
 
-button { min-height: 40px; }
+button {
+  min-height: 40px;
+  transition: transform .12s ease, filter .12s ease, box-shadow .12s ease, background-color .12s ease, opacity .12s ease;
+  -webkit-tap-highlight-color: transparent;
+}
 button.primary {
   width: 100%; padding: 13px; margin-top: 14px; font: inherit; font-weight: 700;
   background: var(--accent); color: var(--accent-ink); border: 0; border-radius: 999px;
@@ -93,7 +97,15 @@ button.ghost {
   white-space: nowrap;
 }
 button.danger { background: var(--danger); color: #fff; border: 0; }
-button:active { transform: scale(.985); }
+button:active { transform: scale(.96); filter: brightness(.96); }
+button:disabled { opacity: .62; pointer-events: none; }
+button.loading { position: relative; }
+button.loading::after {
+  content: ''; display: inline-block; width: .75em; height: .75em; margin-left: .45em;
+  border: 2px solid currentColor; border-right-color: transparent; border-radius: 50%;
+  animation: spin .75s linear infinite; vertical-align: -0.08em;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
 
 /* pill action buttons */
 .pillrow { display: flex; gap: 10px; margin-top: 12px; }
@@ -107,6 +119,9 @@ button:active { transform: scale(.985); }
   width: 38px; height: 38px; min-height: 38px; flex: none; border: 0; border-radius: 50%;
   background: var(--accent); color: var(--accent-ink); font-size: 1.25rem; font-weight: 700;
   line-height: 1; display: inline-flex; align-items: center; justify-content: center;
+}
+.fab:active, .pill:active, .chip:active, .seg button:active {
+  transform: scale(.94);
 }
 
 /* segmented choice */
@@ -164,6 +179,8 @@ button:active { transform: scale(.985); }
 .macrogrid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; text-align: center; margin: 10px 0; }
 .macrogrid b { display: block; font-size: 1.05rem; font-variant-numeric: tabular-nums; }
 .macrogrid span { font-size: .72rem; color: var(--muted); }
+.macroedit { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.macroedit label { margin: 0; }
 
 /* planner */
 .planday { display: grid; grid-template-columns: 40px 1fr 78px 42px; gap: 6px; align-items: center; padding: 6px 0; }

@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { normalizeProduct } from '../js/food/off.js';
-import { normalizeUsda } from '../js/food/usda.js';
+import { normalizeProduct, normalizeSearchHit } from '../js/food/off.js';
+import { buildUsdaSearchUrl, normalizeUsda } from '../js/food/usda.js';
 
 test('OFF product normalizes to per-100g', () => {
   const r = normalizeProduct({
@@ -17,6 +17,21 @@ test('OFF product normalizes to per-100g', () => {
 test('OFF product without nutrition data is dropped', () => {
   assert.equal(normalizeProduct({ code: '9', product_name: 'Mystery', nutriments: {} }), null);
 });
+test('OFF Search-a-licious hit normalizes to per-100g', () => {
+  const r = normalizeSearchHit({
+    code: '0039978041432',
+    product_name: 'Oat Bran',
+    brands: ['Bob\'s Red Mill'],
+    nutriments: { 'energy-kcal_100g': 150, proteins_100g: 7, carbohydrates_100g: 26, fat_100g: 2.5 },
+  });
+  assert.equal(r.id, 'off:0039978041432');
+  assert.equal(r.label, 'Oat Bran');
+  assert.equal(r.brand, 'Bob\'s Red Mill');
+  assert.deepEqual(r.per100g, { kcal: 150, p: 7, c: 26, f: 2.5 });
+});
+test('OFF Search-a-licious hit without nutrition data is dropped', () => {
+  assert.equal(normalizeSearchHit({ code: '1', product_name: 'No macros' }), null);
+});
 test('USDA food normalizes via nutrient ids', () => {
   const r = normalizeUsda({
     fdcId: 456, description: 'Banana, raw', brandOwner: '',
@@ -30,4 +45,13 @@ test('USDA food normalizes via nutrient ids', () => {
 });
 test('USDA food without calories is dropped', () => {
   assert.equal(normalizeUsda({ fdcId: 1, description: 'x', foodNutrients: [] }), null);
+});
+test('USDA search URL uses a saved key when present', () => {
+  const u = new URL(buildUsdaSearchUrl('banana bread', 'real-key'));
+  assert.equal(u.searchParams.get('api_key'), 'real-key');
+  assert.equal(u.searchParams.get('query'), 'banana bread');
+});
+test('USDA search URL falls back to the public demo key', () => {
+  const u = new URL(buildUsdaSearchUrl('oats', ''));
+  assert.equal(u.searchParams.get('api_key'), 'DEMO_KEY');
 });
