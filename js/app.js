@@ -27,6 +27,16 @@ async function boot() {
   if (!settings) {
     document.body.classList.add('onboarding');
     (await import('./views/onboarding.js')).mount(document.getElementById('view'), ctx);
-  } else navigate('log');
+  } else {
+    navigate('log');
+    const last = settings.lastBackupAt ?? settings.onboardedAt;
+    if ((Date.now() - new Date(last + 'T12:00:00')) / 86400000 > 30) {
+      const b = document.createElement('div');
+      b.className = 'banner spread';
+      b.innerHTML = `It's been a month since your last backup <button class="ghost" id="nudge">Export now</button>`;
+      document.getElementById('view').before(b);
+      b.querySelector('#nudge').onclick = () => { b.remove(); navigate('settings'); };
+    }
+  }
 }
 boot();
