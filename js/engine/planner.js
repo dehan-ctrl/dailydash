@@ -51,10 +51,16 @@ export function editDay(days, idx, wantKcal, floorKcal) {
 
 // After a check-in changes the daily target: proportional rescale, locks preserved.
 export function rescalePlan(days, newDailyKcal) {
-  const f = (newDailyKcal * 7) / weeklyTotal(days);
-  const out = days.map((d) => ({ ...d, kcal: Math.round(d.kcal * f) }));
+  const out = days.map((d) => ({ ...d }));
+  const unlocked = out.filter((d) => !d.locked);
+  if (!unlocked.length) return out;
+  const lockedTotal = out.filter((d) => d.locked).reduce((s, d) => s + d.kcal, 0);
+  const unlockedTotal = unlocked.reduce((s, d) => s + d.kcal, 0);
+  const targetUnlockedTotal = newDailyKcal * 7 - lockedTotal;
+  const f = unlockedTotal > 0 ? targetUnlockedTotal / unlockedTotal : 0;
+  for (const d of unlocked) d.kcal = Math.round(d.kcal * f);
   const drift = newDailyKcal * 7 - weeklyTotal(out);
-  const target = out.find((d) => !d.locked) ?? out[0];
+  const target = unlocked[0];
   target.kcal += drift; // absorb rounding drift on an unlocked day
   return out;
 }

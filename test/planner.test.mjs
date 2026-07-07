@@ -49,14 +49,19 @@ test('lowering a day raises the others', () => {
   assert.equal(days[3].kcal, 1400);
   assert.equal(weeklyTotal(days), 14000);
 });
-test('rescale keeps proportions and locks, hits new weekly total', () => {
+test('rescale preserves locked day calories and hits new weekly total', () => {
   let p = editDay(defaultPlan(2000), 0, 2300, 1500).days;
   p[0].locked = true;
   const r = rescalePlan(p, 2100);
-  assert.equal(r[0].kcal, 2415); // locked day rescaled proportionally; drift on unlocked
+  assert.equal(r[0].kcal, 2300);
   assert.equal(weeklyTotal(r), 14700);
   assert.equal(r[0].locked, true);
   assert.ok(r[0].kcal > r[1].kcal); // pattern survives
+});
+test('rescale leaves an all-locked plan unchanged', () => {
+  const p = defaultPlan(2000).map((d) => ({ ...d, locked: true }));
+  const r = rescalePlan(p, 2100);
+  assert.deepEqual(r, p);
 });
 test('dayMacros holds protein constant and scales the rest', () => {
   const t = { kcal: 2000, proteinG: 150, carbG: 200, fatG: 62 };
