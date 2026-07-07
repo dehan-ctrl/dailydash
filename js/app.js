@@ -1,4 +1,5 @@
 import * as db from './db.js';
+import { backupReminder, downloadBackup, DEFAULT_BACKUP_REMINDER_DAYS } from './backup.js';
 
 const TABS = [['diary', 'Diary'], ['coach', 'Coach'], ['me', 'Me'], ['settings', 'Settings']];
 let current = 'diary';
@@ -30,6 +31,7 @@ async function migrate(settings) {
   }
   if (!settings.targetMode) { settings.targetMode = 'coach'; dirty = true; }
   if (settings.bodyFatPct === undefined) { settings.bodyFatPct = null; dirty = true; }
+  if (settings.backupReminderDays === undefined) { settings.backupReminderDays = DEFAULT_BACKUP_REMINDER_DAYS; dirty = true; }
   if (dirty) await db.put('settings', settings, 'main');
   return settings;
 }
@@ -46,14 +48,14 @@ async function boot() {
   } else {
     settings = await migrate(settings);
     navigate('diary');
-    const last = settings.lastBackupAt ?? settings.onboardedAt;
-    if ((Date.now() - new Date(last + 'T12:00:00')) / 86400000 > 30) {
+    const reminder = backupReminder(settings);
+    if (reminder.due) {
       const b = document.createElement('div');
       b.className = 'banner spread';
       b.style.margin = `calc(14px + env(safe-area-inset-top)) 14px 0`;
-      b.innerHTML = `It's been a month since your last backup <button class="ghost" id="nudge">Export now</button>`;
+      b.innerHTML = `It's been ${reminder.label} since your last backup <button class="ghost" id="nudge">Export now</button>`;
       document.getElementById('view').before(b);
-      b.querySelector('#nudge').onclick = () => { b.remove(); navigate('settings'); };
+      b.querySelector('#nudge').onclick = async () => { await downloadBackup(db); b.remove(); };
     }
   }
 }

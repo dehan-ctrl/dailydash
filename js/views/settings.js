@@ -3,6 +3,7 @@ import { rescalePlan } from '../engine/planner.js';
 import { latestTargets, activeTargets } from '../engine/targets.js';
 import { ftInToCm, cmToFtIn, lbToKg, kgToLb } from '../units.js';
 import { dstr } from '../util.js';
+import { DEFAULT_BACKUP_REMINDER_DAYS, downloadBackup } from '../backup.js';
 
 let root, ctx;
 
@@ -17,6 +18,7 @@ async function render() {
   const { ft, in: inch } = cmToFtIn(s.heightCm);
   const rate = s.goal.rateKgPerWeek ?? 0;
   const custom = s.customTargets ?? { ...coachOnly(coach) };
+  const reminderDays = s.backupReminderDays ?? DEFAULT_BACKUP_REMINDER_DAYS;
   root.innerHTML = `
   <div class="card"><h2>Users</h2>
     <label>Current user</label>
@@ -90,6 +92,12 @@ async function render() {
 
   <div class="card"><h2>Data</h2>
     <p class="muted">Everything lives on this device. Export a backup regularly.</p>
+    <label>Backup reminder</label>
+    <select id="backupdays">
+      <option value="14" ${reminderDays === 14 ? 'selected' : ''}>Every 2 weeks</option>
+      <option value="30" ${reminderDays === 30 ? 'selected' : ''}>Monthly</option>
+      <option value="0" ${reminderDays === 0 ? 'selected' : ''}>Off</option>
+    </select>
     <div class="row"><button class="ghost" id="exp">Export backup</button>
       <button class="ghost" id="impbtn">Import backup</button></div>
     <input type="file" id="impfile" accept=".json" hidden>
@@ -191,15 +199,11 @@ function wire(s, coach, profiles) {
     s.usdaApiKey = q('#usda').value.trim();
     await ctx.db.put('settings', s, 'main');
   };
-  q('#exp').onclick = async () => {
-    const data = await ctx.db.exportAll();
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(new Blob([JSON.stringify(data)], { type: 'application/json' }));
-    a.download = `macrocoach-backup-${dstr()}.json`;
-    a.click();
-    s.lastBackupAt = dstr();
+  q('#backupdays').onchange = async () => {
+    s.backupReminderDays = +q('#backupdays').value;
     await ctx.db.put('settings', s, 'main');
   };
+  q('#exp').onclick = async () => { await downloadBackup(ctx.db); };
   q('#impbtn').onclick = () => q('#impfile').click();
   q('#impfile').onchange = async (e) => {
     const file = e.target.files[0];
