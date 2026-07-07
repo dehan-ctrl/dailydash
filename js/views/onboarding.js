@@ -1,5 +1,5 @@
 import { prescribe, editMacro, ageFromBirthdate, ACTIVITY } from '../engine/prescribe.js';
-import { lbToKg, ftInToCm } from '../units.js';
+import { lbToKg, ftInToCm, cmToFtIn } from '../units.js';
 import { dstr } from '../util.js';
 
 const s = {
@@ -27,7 +27,7 @@ function render() {
 
 function profile() {
   const imp = s.units === 'imperial';
-  const { ft, in: inch } = imp ? cmFt(s.heightCm) : { ft: 0, in: 0 };
+  const { ft, in: inch } = imp ? cmToFtIn(s.heightCm) : { ft: 0, in: 0 };
   return `<div class="card"><h1>Welcome to MacroCoach</h1>
   <label>Units</label>${seg('units', [['imperial', 'lb + ft/in'], ['metric', 'kg + cm']], s.units)}
   <label>Sex</label>${seg('sex', [['m', 'Male'], ['f', 'Female']], s.sex)}
@@ -42,7 +42,6 @@ function profile() {
     `<option value="${k}" ${k === s.activity ? 'selected' : ''}>${k}</option>`).join('')}</select>
   <button class="primary" data-next>Next</button></div>`;
 }
-function cmFt(cm) { const t = cm / 2.54; const ft = Math.floor(t / 12); return { ft, in: Math.round(t - ft * 12) }; }
 
 function goal() {
   const b = RATE_BOUNDS[s.goalType];
@@ -110,8 +109,10 @@ function wire() {
   root.querySelectorAll('[data-seg]').forEach((el) => {
     el.onclick = (e) => {
       const b = e.target.closest('button'); if (!b) return;
+      collectSafe();
       s[el.dataset.seg] = el.dataset.seg === 'plantBased' ? b.dataset.v === 'true' : b.dataset.v;
-      collectSafe(); render();
+      s.targets = null;
+      render();
     };
   });
   const rate = root.querySelector('#rate');
