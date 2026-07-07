@@ -12,12 +12,73 @@ export async function navigate(id) {
     .forEach((b) => b.classList.toggle('active', b.dataset.id === tab));
   const main = document.getElementById('view');
   main.innerHTML = '';
+  main.scrollTop = 0;
   try {
     (await import(`./views/${id}.js`)).mount(main, ctx);
   } catch (e) {
     main.innerHTML = `<div class="card"><h2>${id}</h2><p>Something went wrong loading this screen.</p></div>`;
     console.error(e);
   }
+}
+
+// Pull-to-refresh: drag down from the top of the view to re-render the
+// current screen and check for an app update. Touch-only, so desktop is
+// unaffected; disabled during onboarding (no `current` view to reload yet).
+function setupPullToRefresh(view) {
+  const THRESHOLD = 72;
+  const ptr = document.createElement('div');
+  ptr.id = 'ptr';
+  ptr.innerHTML = '<i></i><span>Up to date ✓</span>';
+  document.body.appendChild(ptr);
+  const ring = ptr.querySelector('i');
+  let startY = 0, pull = 0, tracking = false, busy = false;
+
+  const reset = () => {
+    ptr.classList.add('settle');
+    ptr.classList.remove('done');
+    ptr.style.transform = 'translate(-50%, -24px)';
+    ptr.style.opacity = '0';
+    setTimeout(() => { ptr.classList.remove('settle'); busy = false; }, 300);
+  };
+
+  view.addEventListener('touchstart', (e) => {
+    tracking = !busy && view.scrollTop <= 0 && !document.body.classList.contains('onboarding');
+    startY = e.touches[0].clientY;
+    pull = 0;
+  }, { passive: true });
+
+  view.addEventListener('touchmove', (e) => {
+    if (!tracking || busy) return;
+    const dy = e.touches[0].clientY - startY;
+    if (dy <= 0 || view.scrollTop > 0) { pull = 0; return; }
+    e.preventDefault(); // replace the native rubber-band with the indicator
+    pull = Math.min(dy * 0.45, 104);
+    ptr.classList.remove('settle');
+    ptr.style.transform = `translate(-50%, ${Math.min(pull * 0.4, 40) - 24}px)`;
+    ptr.style.opacity = Math.min(pull / THRESHOLD, 1);
+    ring.style.transform = `rotate(${pull * 3}deg)`;
+  }, { passive: false });
+
+  const release = async () => {
+    if (!tracking) return;
+    tracking = false;
+    if (busy) return;
+    if (pull < THRESHOLD) { if (pull > 0) reset(); return; }
+    busy = true;
+    ptr.classList.add('settle', 'refreshing');
+    ptr.style.transform = 'translate(-50%, 8px)';
+    ptr.style.opacity = '1';
+    const t0 = Date.now();
+    navigator.serviceWorker?.getRegistration?.().then((r) => r?.update()).catch(() => {});
+    try { await navigate(current); } catch { /* navigate renders its own error */ }
+    // keep the spinner up long enough to read as "something happened"
+    await new Promise((r) => setTimeout(r, Math.max(0, 650 - (Date.now() - t0))));
+    ptr.classList.remove('refreshing');
+    ptr.classList.add('done');
+    setTimeout(reset, 900);
+  };
+  view.addEventListener('touchend', release);
+  view.addEventListener('touchcancel', release);
 }
 
 // One-time upgrades for data written by earlier versions.
@@ -41,6 +102,7 @@ async function boot() {
   const tb = document.getElementById('tabbar');
   tb.innerHTML = TABS.map(([id, l]) => `<button data-id="${id}">${l}</button>`).join('');
   tb.onclick = (e) => { const b = e.target.closest('button'); if (b) navigate(b.dataset.id); };
+  setupPullToRefresh(document.getElementById('view'));
   let settings = await db.get('settings', 'main');
   if (!settings) {
     document.body.classList.add('onboarding');

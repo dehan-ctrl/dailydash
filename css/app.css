@@ -23,17 +23,23 @@
 
 * { box-sizing: border-box; }
 html, body { margin: 0; padding: 0; }
+html { height: 100%; -webkit-text-size-adjust: 100%; }
 body {
+  height: 100%; display: flex; flex-direction: column; overflow: hidden;
   font: 16px/1.45 -apple-system, system-ui, 'Segoe UI', sans-serif;
   background: var(--bg); color: var(--text);
-  padding-bottom: calc(66px + env(safe-area-inset-bottom));
 }
 h1, h2, h3 { margin: 0 0 .5rem; letter-spacing: -0.015em; font-weight: 700; }
 h1 { font-size: 1.45rem; } h2 { font-size: 1.1rem; } h3 { font-size: .95rem; }
+/* the app's single scroll container — keeps scrolling smooth and contained
+   (no body rubber-band dragging the tab bar around) */
 #view {
-  max-width: 480px; margin: 0 auto;
-  padding: calc(14px + env(safe-area-inset-top)) 14px 24px;
+  flex: 1; min-height: 0; width: 100%; max-width: 480px; margin: 0 auto;
+  overflow-y: auto; -webkit-overflow-scrolling: touch; overscroll-behavior-y: contain;
+  padding: calc(14px + env(safe-area-inset-top)) 14px calc(90px + env(safe-area-inset-bottom));
 }
+button, input, select, textarea, .chip, .pill { touch-action: manipulation; }
+button, #tabbar { -webkit-user-select: none; user-select: none; }
 
 /* hero header band (diary date bar, coach goal header) */
 .hero {
@@ -163,7 +169,8 @@ button.loading::after {
 /* bottom sheet */
 .sheet-back { position: fixed; inset: 0; background: rgb(9 20 34 / .45); z-index: 30; }
 .sheet {
-  position: fixed; left: 0; right: 0; bottom: 0; z-index: 31; max-height: 88vh; overflow-y: auto;
+  position: fixed; left: 0; right: 0; bottom: 0; z-index: 31; max-height: 88dvh; overflow-y: auto;
+  -webkit-overflow-scrolling: touch; overscroll-behavior: contain;
   background: var(--surface); border-radius: 22px 22px 0 0;
   padding: 16px 14px calc(20px + env(safe-area-inset-bottom));
   max-width: 480px; margin: 0 auto;
@@ -289,3 +296,21 @@ button.loading::after {
 .backbar { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
 .backbar h2 { margin: 0; }
 video.scanner { width: 100%; border-radius: var(--radius); background: #000; aspect-ratio: 3/4; object-fit: cover; }
+
+/* pull-to-refresh indicator */
+#ptr {
+  position: fixed; top: calc(env(safe-area-inset-top) + 10px); left: 50%; z-index: 25;
+  transform: translate(-50%, -24px); opacity: 0; pointer-events: none;
+  display: flex; align-items: center; gap: 6px; min-height: 38px;
+  background: var(--surface); border: 1px solid var(--line); border-radius: 999px;
+  padding: 8px 10px; box-shadow: 0 4px 16px rgb(9 20 34 / .18);
+}
+#ptr.settle { transition: transform .28s ease, opacity .28s ease; }
+#ptr i {
+  display: block; width: 20px; height: 20px; border-radius: 50%;
+  border: 2.5px solid var(--accent); border-right-color: transparent;
+}
+#ptr.refreshing i { animation: spin .7s linear infinite; }
+#ptr span { display: none; font-size: .82rem; font-weight: 700; color: var(--ok); padding: 0 2px; white-space: nowrap; }
+#ptr.done i { display: none; }
+#ptr.done span { display: inline; }

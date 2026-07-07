@@ -9,6 +9,15 @@ test('index registers service worker with explicit update handling', async () =>
   assert.match(html, /registration\.update/);
 });
 
+test('app wires pull-to-refresh with a visible indicator', async () => {
+  const app = await readFile(new URL('../js/app.js', import.meta.url), 'utf8');
+  assert.match(app, /setupPullToRefresh/);
+  assert.match(app, /touchmove/);
+  const css = await readFile(new URL('../css/app.css', import.meta.url), 'utf8');
+  assert.match(css, /#ptr/);
+  assert.match(css, /overscroll-behavior/);
+});
+
 test('service worker supports forced activation and network-first navigations', async () => {
   const sw = await readFile(new URL('../sw.js', import.meta.url), 'utf8');
   assert.match(sw, /message/);

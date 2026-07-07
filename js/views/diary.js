@@ -2,10 +2,10 @@ import { dstr, addDays, dowMon } from '../util.js';
 import { dayMacros } from '../engine/planner.js';
 import { targetsFor, activeTargets } from '../engine/targets.js';
 import { normalizeServings, portionPreview, servingIndexForEntry, entryFromPortion, reconcileCustomFood, customMacroSourceServing } from '../food/portion.js';
-import { customFoodForBarcode, normalizeBarcode } from '../food/custom.js';
+import { buildCustomFood, customFoodForBarcode, normalizeBarcode } from '../food/custom.js';
 import { lookupBarcode, searchFoodsPage } from '../food/off.js';
 import { searchUsdaPage, hydrateUsdaFood } from '../food/usda.js';
-import { startScan, stopScan } from '../food/barcode.js';
+import { startScan, stopScan, scanErrorMessage } from '../food/barcode.js';
 
 const MEALS = ['Breakfast', 'Lunch', 'Dinner', 'Snacks'];
 let date = dstr(), root, ctx, settings, mode = 'consumed', sheet = null;
@@ -338,12 +338,14 @@ async function renderSheet() {
   } else if (sheet.tab === 'custom') {
     sheet.results = customs.map((f) => ({ ...f, id: 'custom:' + f.id }));
     body = `${sheet.results.map((f, i) => resultRow(f, i, favs)).join('')}
-      <h3 style="margin-top:12px">New custom food (per 100 g)</h3>
+      <h3 style="margin-top:12px">New custom food</h3>
       <input id="cname" placeholder="Name">
       <input id="cbarcode" inputmode="numeric" placeholder="barcode (optional)">
+      <div class="row"><input id="cslabel" placeholder="serving name (e.g. 2/3 cup)"><input id="csgrams" type="number" placeholder="grams"></div>
+      <label id="cmacros">Macros per 100 g</label>
       <div class="row"><input id="ck" type="number" placeholder="kcal"><input id="cp" type="number" placeholder="protein"></div>
       <div class="row"><input id="cc" type="number" placeholder="carbs"><input id="cf" type="number" placeholder="fat"></div>
-      <div class="row"><input id="cslabel" placeholder="serving name (e.g. 1 scoop)"><input id="csgrams" type="number" placeholder="grams"></div>
+      <p class="hint">Enter the macros for the serving above. Leave the serving blank to enter per 100 g instead.</p>
       <button class="ghost" id="csave" style="margin-top:8px">Save food</button>`;
   } else if (sheet.tab === 'recipe') {
     body = renderRecipeTab(recipes);
@@ -484,15 +486,25 @@ function wireSheet(el) {
   };
 
   /* custom food */
+  const csgrams = q('#csgrams');
+  if (csgrams) {
+    const syncMacroLabel = () => {
+      const g = +csgrams.value;
+      q('#cmacros').textContent = g > 0
+        ? `Macros for ${q('#cslabel').value.trim() || 'this serving'} (${g} g)`
+        : 'Macros per 100 g';
+    };
+    csgrams.oninput = syncMacroLabel;
+    q('#cslabel').oninput = syncMacroLabel;
+  }
   const csave = q('#csave');
   if (csave) csave.onclick = async () => {
     const name = q('#cname').value.trim();
     if (!name) return;
-    const grams = +q('#csgrams').value, slabel = q('#cslabel').value.trim();
-    await ctx.db.put('foods', reconcileCustomFood({
-      source: 'custom', label: name, brand: '', barcode: normalizeBarcode(q('#cbarcode').value),
-      per100g: { kcal: +q('#ck').value || 0, p: +q('#cp').value || 0, c: +q('#cc').value || 0, f: +q('#cf').value || 0 },
-      servings: grams > 0 ? [{ label: '100 g', grams: 100 }, { label: slabel || `${grams} g`, grams }] : [{ label: '100 g', grams: 100 }],
+    await ctx.db.put('foods', buildCustomFood({
+      label: name, barcode: q('#cbarcode').value,
+      macros: { kcal: +q('#ck').value || 0, p: +q('#cp').value || 0, c: +q('#cc').value || 0, f: +q('#cf').value || 0 },
+      servingLabel: q('#cslabel').value, servingGrams: +q('#csgrams').value,
     }));
     renderSheetStable();
   };
@@ -678,6 +690,6 @@ async function startBarcodeScan(el) {
       renderSheetStable();
     });
   } catch (e) {
-    box.innerHTML = `<p class="msg">Camera unavailable: ${e.message}</p>`;
+    box.innerHTML = `<p class="msg">${scanErrorMessage(e)}</p>`;
   }
 }
