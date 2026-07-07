@@ -1,4 +1,4 @@
-const CACHE = 'macrocoach-v1'; // bump on every deploy that changes shipped files
+const CACHE = 'macrocoach-v2'; // bump on every deploy that changes shipped files
 const SHELL = [
   './', 'index.html', 'css/app.css', 'manifest.webmanifest',
   'js/app.js', 'js/db.js', 'js/units.js', 'js/util.js', 'js/charts.js',

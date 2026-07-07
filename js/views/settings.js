@@ -104,7 +104,12 @@ function wire(s) {
   q('#impfile').onchange = async (e) => {
     const file = e.target.files[0];
     if (!file) return;
-    await ctx.db.importAll(JSON.parse(await file.text()));
+    try {
+      await ctx.db.importAll(JSON.parse(await file.text()));
+    } catch (err) {
+      alert(`Import failed: ${err.message}`);
+      return;
+    }
     location.reload();
   };
   q('#wipe').onclick = async () => {

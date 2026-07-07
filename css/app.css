@@ -21,7 +21,7 @@ body {
 }
 h1, h2, h3 { margin: 0 0 .5rem; letter-spacing: -0.01em; }
 h1 { font-size: 1.5rem; } h2 { font-size: 1.15rem; } h3 { font-size: 1rem; }
-#view { max-width: 480px; margin: 0 auto; padding: 16px 14px 24px; }
+#view { max-width: 480px; margin: 0 auto; padding: calc(16px + env(safe-area-inset-top)) 14px 24px; }
 
 /* tab bar */
 #tabbar {

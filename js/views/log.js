@@ -11,8 +11,12 @@ let date = dstr(), root, ctx, settings, sheet = null; // sheet = {meal, tab, q, 
 export function latestTargets(all) {
   return [...all].sort((a, b) => (a.effectiveDate < b.effectiveDate ? 1 : -1))[0];
 }
+export function targetsFor(all, d) {
+  const sorted = [...all].sort((a, b) => (a.effectiveDate < b.effectiveDate ? 1 : -1));
+  return sorted.find((t) => t.effectiveDate <= d) ?? sorted.at(-1);
+}
 export async function dayTargetFor(db, d) {
-  const t = latestTargets(await db.getAll('targets'));
+  const t = targetsFor(await db.getAll('targets'), d);
   const plan = await db.get('planner', 'main');
   return plan?.enabled ? dayMacros(plan.days[dowMon(d)].kcal, t) : t;
 }
@@ -251,8 +255,9 @@ function renderRecipeTab(recipes) {
   const d = sheet.recipeDraft;
   if (!d) {
     return `${recipes.map((r) => `<div class="result"><div>${r.name}
-        <small class="muted">${Math.round(r.perServing.kcal)} kcal/serving · makes ${r.servings}</small></div>
-        <button class="ghost" data-recadd="${r.id}">Add</button></div>`).join('')
+    <small class="muted">${Math.round(r.perServing.kcal)} kcal/serving · makes ${r.servings}</small></div>
+  <input type="number" step="0.5" value="1" data-recqty="${r.id}" style="width:64px;flex:none">
+  <button class="ghost" data-recadd="${r.id}">Add</button></div>`).join('')
       || '<p class="muted">No recipes yet.</p>'}
       <button class="ghost" id="recnew" style="margin-top:10px">+ New recipe</button>`;
   }
@@ -276,7 +281,7 @@ function wireRecipeTab(el) {
   if (recnew) recnew.onclick = () => { sheet.recipeDraft = { name: '', servings: 4, results: [], ingredients: [] }; renderSheet(); };
   el.querySelectorAll('[data-recadd]').forEach((b) => (b.onclick = async () => {
     const r = await ctx.db.get('recipes', +b.dataset.recadd);
-    const qty = +prompt(`How many servings of ${r.name}?`, '1') || 0;
+    const qty = +el.querySelector(`[data-recqty="${r.id}"]`).value || 0;
     if (!qty) return;
     await addEntry({
       label: r.name, brand: 'recipe', foodId: 'recipe:' + r.id, qty, unit: 'serving',
