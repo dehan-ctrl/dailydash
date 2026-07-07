@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { normalizeProduct, normalizeSearchHit } from '../js/food/off.js';
-import { buildUsdaSearchUrl, normalizeUsda } from '../js/food/usda.js';
+import { buildUsdaSearchUrl, normalizeUsda, usdaServingsFromFood } from '../js/food/usda.js';
 
 test('OFF product normalizes to per-100g', () => {
   const r = normalizeProduct({
@@ -45,6 +45,32 @@ test('USDA food normalizes via nutrient ids', () => {
 });
 test('USDA food without calories is dropped', () => {
   assert.equal(normalizeUsda({ fdcId: 1, description: 'x', foodNutrients: [] }), null);
+});
+test('USDA search result keeps household serving text when it has grams', () => {
+  const r = normalizeUsda({
+    fdcId: 2575290,
+    description: 'EGG',
+    brandOwner: 'Brand',
+    servingSize: 31.2,
+    householdServingFullText: '1 EGG',
+    foodNutrients: [{ nutrientId: 1008, value: 155 }],
+  });
+  assert.equal(r.serving.label, '1 EGG');
+  assert.equal(r.serving.grams, 31.2);
+});
+test('USDA detail imports count servings from food portions', () => {
+  const servings = usdaServingsFromFood({
+    householdServingFullText: undefined,
+    servingSize: undefined,
+    foodPortions: [
+      { amount: 1, modifier: 'large', gramWeight: 33, measureUnit: { name: 'undetermined', abbreviation: 'undetermined' } },
+      { amount: 1, modifier: 'cup', gramWeight: 243, measureUnit: { name: 'undetermined', abbreviation: 'undetermined' } },
+    ],
+  });
+  assert.deepEqual(servings, [
+    { label: '1 large', grams: 33 },
+    { label: '1 cup', grams: 243 },
+  ]);
 });
 test('USDA search URL uses a saved key when present', () => {
   const u = new URL(buildUsdaSearchUrl('banana bread', 'real-key'));

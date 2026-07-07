@@ -3,7 +3,7 @@ import { dayMacros } from '../engine/planner.js';
 import { targetsFor, activeTargets } from '../engine/targets.js';
 import { normalizeServings, portionMacros, entryFromPortion } from '../food/portion.js';
 import { lookupBarcode, searchFoods } from '../food/off.js';
-import { searchUsda } from '../food/usda.js';
+import { searchUsda, hydrateUsdaFood } from '../food/usda.js';
 import { startScan, stopScan } from '../food/barcode.js';
 
 const MEALS = ['Breakfast', 'Lunch', 'Dinner', 'Snacks'];
@@ -294,10 +294,11 @@ function wireSheet(el) {
   el.querySelectorAll('[data-tab]').forEach((b) =>
     (b.onclick = () => { sheet.tab = b.dataset.tab; sheet.picked = null; sheet.results = []; sheet.msg = ''; renderSheetStable(); }));
   el.querySelectorAll('[data-open]').forEach((b) =>
-    (b.onclick = () => {
+    (b.onclick = async () => {
       const food = sheet.results[+b.dataset.open];
-      const servings = normalizeServings(food);
-      sheet.picked = { food, servingIdx: servings.length > 1 ? 1 : 0, qty: 1 };
+      const hydrated = food?.source === 'usda' ? await hydrateUsdaFood(food, settings.usdaApiKey) : food;
+      const servings = normalizeServings(hydrated);
+      sheet.picked = { food: hydrated, servingIdx: servings.length > 1 ? 1 : 0, qty: 1 };
       sheet.editing = false;
       renderSheetStable();
     }));
@@ -525,9 +526,10 @@ async function startBarcodeScan(el) {
         box.querySelector('#scanmsg').textContent = `No product found for ${code}.`;
         return;
       }
-      const servings = normalizeServings(food);
-      sheet.picked = { food, servingIdx: servings.length > 1 ? 1 : 0, qty: 1 };
-      renderSheet();
+      const hydrated = food.source === 'usda' ? await hydrateUsdaFood(food, settings.usdaApiKey) : food;
+      const servings = normalizeServings(hydrated);
+      sheet.picked = { food: hydrated, servingIdx: servings.length > 1 ? 1 : 0, qty: 1 };
+      renderSheetStable();
     });
   } catch (e) {
     box.innerHTML = `<p class="msg">Camera unavailable: ${e.message}</p>`;
