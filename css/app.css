@@ -229,9 +229,30 @@ button.loading::after {
 .dots { display: flex; gap: 5px; margin: 10px 0 6px; }
 .dots i { flex: 1; height: 6px; border-radius: 3px; background: var(--surface2); }
 .dots i.on { background: var(--accent); }
+.sectiontitle { margin: 18px 0 8px; color: var(--muted); font-weight: 600; }
+.sectionhead { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin: 18px 0 8px; }
+.sectionhead h2 { margin: 0; color: var(--muted); font-weight: 600; }
+.periodcard, .compliancecard { background: var(--accent-soft); box-shadow: none; }
+.periodcard .spread b { display: inline-block; margin-top: 6px; font-size: 1.05rem; }
+.switchrow {
+  display: inline-flex; align-items: center; gap: 10px; margin: 0;
+  color: var(--text); font-size: .95rem; font-weight: 700;
+}
+.switchrow input { position: absolute; opacity: 0; pointer-events: none; }
+.switchrow span {
+  width: 46px; height: 28px; border-radius: 999px; background: var(--muted);
+  position: relative; display: inline-block; transition: background .15s ease;
+}
+.switchrow span::after {
+  content: ''; position: absolute; width: 24px; height: 24px; top: 2px; left: 2px;
+  border-radius: 50%; background: var(--surface); transition: transform .15s ease;
+}
+.switchrow input:checked + span { background: var(--accent); }
+.switchrow input:checked + span::after { transform: translateX(18px); }
 .comprow { display: grid; grid-template-columns: 1fr auto auto; gap: 10px; padding: 5px 0; font-size: .92rem; }
 .comprow .tgt { color: var(--muted); font-variant-numeric: tabular-nums; }
 .comprow b { font-variant-numeric: tabular-nums; text-align: right; }
+.compliancestatus { text-align: center; margin-top: 18px; font-size: 1rem; }
 .checkin-rec { border-top: 1px solid var(--line); padding: 10px 0; font-size: .9rem; }
 
 /* me tab */

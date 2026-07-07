@@ -5,7 +5,7 @@ import { rescalePlan } from '../engine/planner.js';
 import { latestTargets, activeTargets } from '../engine/targets.js';
 import { fmtWeight, lbToKg, kgToLb } from '../units.js';
 
-let root, ctx, preview = null;
+let root, ctx, preview = null, includeToday = true;
 
 export async function mount(el, c) { root = el; ctx = c; preview = null; render(); }
 
@@ -39,7 +39,7 @@ function isDue(settings, checkins, today) {
   return since >= 8 || (dowMon(today) === settings.checkInDay && since >= 6);
 }
 
-function buildInputs({ settings, targets, weighins, logs, checkins }, today) {
+export function buildInputs({ settings, targets, weighins, logs, checkins }, today) {
   const start = addDays(today, -6);
   const trend = computeTrend(weighins);
   const inWin = (d) => d >= start && d <= today;
@@ -48,20 +48,20 @@ function buildInputs({ settings, targets, weighins, logs, checkins }, today) {
   const trendStartKg = before.length ? before.at(-1).trendKg : winTrend[0]?.trendKg ?? 0;
   const trendEndKg = winTrend.at(-1)?.trendKg ?? trendStartKg;
   const dayKcal = (log) => log.meals.flatMap((m) => m.entries).reduce((s, e) => s + e.kcal, 0);
-  const complete = logs.filter((l) => inWin(l.date) && l.complete && dayKcal(l) > 0);
-  const avgIntakeKcal = complete.length ? complete.reduce((s, l) => s + dayKcal(l), 0) / complete.length : 0;
+  const logged = logs.filter((l) => inWin(l.date) && dayKcal(l) > 0);
+  const avgIntakeKcal = logged.length ? logged.reduce((s, l) => s + dayKcal(l), 0) / logged.length : 0;
   const last = checkins[0];
   return {
     goal: settings.goal, sex: settings.sex, targets,
     weightKg: trend.at(-1)?.weightKg ?? 0,
     trendStartKg, trendEndKg, avgIntakeKcal,
-    loggedDays: complete.length, weighinCount: winTrend.length,
+    loggedDays: logged.length, weighinCount: winTrend.length,
     prevTdee: last?.tdee ?? null, compliantStreak: last?.compliantStreak ?? 0,
   };
 }
 
 // tracked averages for the running period (since the last check-in, max 7 days)
-function periodStats({ logs }, from, today) {
+export function periodStats({ logs }, from, today) {
   const dayS = (log) => log.meals.flatMap((m) => m.entries)
     .reduce((a, e) => ({ kcal: a.kcal + e.kcal, p: a.p + e.p, c: a.c + e.c, f: a.f + e.f }),
       { kcal: 0, p: 0, c: 0, f: 0 });
@@ -73,6 +73,21 @@ function periodStats({ logs }, from, today) {
 }
 
 const band = (v, frac = 0.03) => `${Math.round(v * (1 - frac))}–${Math.round(v * (1 + frac))}`;
+const niceDate = (d) => new Date(d + 'T12:00:00').toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+const fullDate = (d) => new Date(d + 'T12:00:00').toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+
+export function complianceRange(lastCk, today, include) {
+  const from = lastCk;
+  const to = include ? today : addDays(today, -1);
+  const safeTo = to < from ? from : to;
+  const a = new Date(from + 'T12:00:00');
+  const b = new Date(safeTo + 'T12:00:00');
+  const sameMonth = a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth();
+  const label = from === safeTo
+    ? niceDate(from)
+    : sameMonth ? `${niceDate(from)} - ${b.getDate()}` : `${niceDate(from)} - ${niceDate(safeTo)}`;
+  return { from, to: safeTo, label };
+}
 
 async function render() {
   const data = await gather();
@@ -100,7 +115,8 @@ async function render() {
   const nextCk = addDays(lastCk, 7);
   const untilCk = Math.max(daysBetween(today, nextCk), 0);
   const active = activeTargets(settings, targets);
-  const stats = periodStats(data, addDays(lastCk, 1), today);
+  const range = complianceRange(lastCk, today, includeToday);
+  const stats = periodStats(data, range.from, range.to);
   const compliant = stats && stats.kcal >= active.kcal * 0.95 && stats.kcal <= active.kcal * 1.05;
 
   root.innerHTML = `
@@ -125,20 +141,23 @@ async function render() {
     </div>
   </div>
   ${due ? `<div class="banner spread">Check-in is due<button class="ghost" id="run">Run check-in</button></div>` : ''}
-  <div class="card"><h2>Current period</h2>
-    <div class="spread"><span class="muted">Last check-in<br><b style="color:var(--text)">${niceDate(lastCk)}</b></span>
-      <span class="muted" style="text-align:right">Next check-in<br><b style="color:var(--text)">${niceDate(nextCk)}</b></span></div>
+  <h2 class="sectiontitle">Current period</h2>
+  <div class="card periodcard">
+    <div class="spread"><span class="muted">Last check in<br><b style="color:var(--text)">${fullDate(lastCk)}</b></span>
+      <span class="muted" style="text-align:right">Next check in<br><b style="color:var(--text)">${fullDate(nextCk)}</b></span></div>
     <div class="dots">${Array.from({ length: 7 }, (_, i) => `<i class="${i < sinceCk ? 'on' : ''}"></i>`).join('')}</div>
     <p class="muted" style="text-align:center">${untilCk === 0 ? 'Check-in available' : `${untilCk} day${untilCk === 1 ? '' : 's'} until your next check-in`}</p>
   </div>
-  <div class="card"><h2>Compliance</h2>
+  <div class="sectionhead"><h2>Compliance</h2>
+    <label class="switchrow">Include today<input type="checkbox" id="inctoday" ${includeToday ? 'checked' : ''}><span></span></label></div>
+  <div class="card compliancecard">
     ${stats ? `
-    <div class="comprow"><span class="muted">since ${niceDate(lastCk)}</span><span class="tgt">Targets</span><b>Tracked (avg)</b></div>
+    <div class="comprow"><span class="muted">${range.label}</span><span class="tgt">Targets</span><b>Tracked (Avg)</b></div>
     <div class="comprow"><span>Cal</span><span class="tgt">${band(active.kcal)}</span><b>${Math.round(stats.kcal)}</b></div>
     <div class="comprow"><span>Protein</span><span class="tgt">${band(active.proteinG)}</span><b>${Math.round(stats.p)}g</b></div>
     <div class="comprow"><span>Carbs</span><span class="tgt">${band(active.carbG)}</span><b>${Math.round(stats.c)}g</b></div>
     <div class="comprow"><span>Fat</span><span class="tgt">${band(active.fatG)}</span><b>${Math.round(stats.f)}g</b></div>
-    <p class="${compliant ? 'hint' : 'msg'}" style="text-align:center">${compliant ? '✓ You are on track this period.' : 'Averages are outside the target band.'}</p>`
+    <p class="${compliant ? 'hint' : 'msg'} compliancestatus">${compliant ? '✓ You are currently compliant.' : '✕ You are currently not compliant.'}</p>`
     : '<p class="muted">Log some food to see period compliance.</p>'}
   </div>
   <div class="card"><h2>Prescription</h2>
@@ -157,6 +176,7 @@ async function render() {
 
   root.querySelector('#changegoal').onclick = () => ctx.navigate('settings');
   root.querySelector('#addwt').onclick = () => { root.querySelector('#wtrow').hidden = false; root.querySelector('#wt').focus(); };
+  root.querySelector('#inctoday').onchange = (e) => { includeToday = e.target.checked; render(); };
   root.querySelector('#savewt').onclick = async () => {
     const v = +root.querySelector('#wt').value;
     if (!v) return;
@@ -172,8 +192,6 @@ async function render() {
   };
   if (preview) renderFlow(data);
 }
-
-const niceDate = (d) => new Date(d + 'T12:00:00').toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
 
 function renderFlow(data) {
   const el = root.querySelector('#flow');

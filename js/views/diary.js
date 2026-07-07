@@ -64,8 +64,7 @@ function summaryCard(t, target) {
     </div>
   </div>
   ${target.source === 'custom' ? '<p class="hint">Using your custom targets (Settings → Macro targets).</p>' : ''}
-  <div class="pillrow"><button class="pill" id="toplan">📊 Planner</button>
-    <button class="pill" id="copy">📋 Copy yesterday</button></div>
+  <div class="pillrow"><button class="pill" id="toplan">📊 Planner</button></div>
   </div>`;
 }
 
@@ -91,8 +90,6 @@ async function render() {
         <div style="flex:none">${e.kcal} <button class="del" data-del="${mi}:${ei}" aria-label="Delete ${e.label}">×</button></div></div>`).join('')}
     </div>`;
   }).join('')}
-  <button class="ghost" id="complete" style="width:100%">${log.complete ? '✓ Day marked complete' : 'Mark day complete'}</button>
-  <p class="hint">Days marked complete count toward your weekly check-in.</p>
   <div id="sheetroot"></div>`;
   wire(log);
   if (sheet) renderSheet();
@@ -121,13 +118,6 @@ function wire(log) {
   root.querySelectorAll('[data-nav]').forEach((b) => (b.onclick = () => { date = addDays(date, +b.dataset.nav); sheet = null; render(); }));
   root.querySelectorAll('[data-mode]').forEach((b) => (b.onclick = () => { mode = b.dataset.mode; render(); }));
   root.querySelector('#toplan').onclick = () => ctx.navigate('plan');
-  root.querySelector('#complete').onclick = async () => { log.complete = !log.complete; await save(log); };
-  root.querySelector('#copy').onclick = async () => {
-    const prev = await ctx.db.get('logs', addDays(date, -1));
-    if (!prev) return alert('Nothing logged yesterday.');
-    log.meals = structuredClone(prev.meals);
-    await save(log);
-  };
   root.querySelectorAll('[data-add]').forEach((b) =>
     (b.onclick = () => { sheet = { meal: +b.dataset.add, tab: 'search', q: '', results: [], picked: null, editEntry: null, editing: false, recipeDraft: null, msg: '' }; render(); }));
   root.querySelectorAll('[data-entry]').forEach((b) => (b.onclick = async () => {
