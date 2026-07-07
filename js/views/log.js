@@ -1,8 +1,9 @@
 import { dstr, addDays, dowMon } from '../util.js';
 import { fmtWeight, lbToKg } from '../units.js';
 import { dayMacros } from '../engine/planner.js';
-import { searchFoods } from '../food/off.js';
+import { lookupBarcode, searchFoods } from '../food/off.js';
 import { searchUsda } from '../food/usda.js';
+import { startScan, stopScan } from '../food/barcode.js';
 
 const MEALS = ['Breakfast', 'Lunch', 'Dinner', 'Snacks'];
 let date = dstr(), root, ctx, settings, sheet = null; // sheet = {meal, tab, q, results, picked, recipeDraft}
@@ -316,6 +317,26 @@ function wireRecipeTab(el) {
   };
 }
 
-/* Barcode: stub until Task 11 replaces it. */
-function startBarcodeScan() { alert('Barcode scanning lands in the next update.'); }
-export { startBarcodeScan as _scanStub };
+async function startBarcodeScan(el) {
+  const box = el.querySelector('#scanbox');
+  box.innerHTML = `<video class="scanner" playsinline muted></video>
+    <button class="ghost" id="scanstop" style="margin-top:6px">Stop</button>
+    <p class="muted" id="scanmsg">Point the camera at a barcode...</p>`;
+  const video = box.querySelector('video');
+  el.querySelector('#scanstop').onclick = () => { stopScan(); box.innerHTML = ''; };
+  try {
+    await startScan(video, async (code) => {
+      stopScan();
+      box.querySelector('#scanmsg').textContent = `Looking up ${code}...`;
+      const food = await lookupBarcode(code);
+      if (!food) {
+        box.querySelector('#scanmsg').textContent = `No product found for ${code}.`;
+        return;
+      }
+      sheet.picked = food;
+      renderSheet();
+    });
+  } catch (e) {
+    box.innerHTML = `<p class="msg">Camera unavailable: ${e.message}</p>`;
+  }
+}
