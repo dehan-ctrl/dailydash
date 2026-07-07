@@ -151,6 +151,13 @@ button.loading::after {
 .meal .mealsum { color: var(--muted); font-size: .82rem; }
 .entry { display: flex; justify-content: space-between; gap: 8px; padding: 8px 0; border-top: 1px solid var(--line); font-size: .9rem; align-items: center; }
 .entry small { color: var(--muted); display: block; }
+.entrytext, .entryopen { flex: 1; min-width: 0; }
+.entryopen {
+  min-height: 36px; padding: 0; background: none; border: 0; color: var(--text);
+  font: inherit; text-align: left;
+}
+.entryopen span { text-decoration: underline; text-decoration-color: var(--line); text-underline-offset: 3px; }
+.entryopen:active span { text-decoration-color: var(--accent); }
 .entry .del { background: none; border: 0; color: var(--danger); font-size: 1rem; padding: 0 4px; min-height: 32px; }
 
 /* bottom sheet */

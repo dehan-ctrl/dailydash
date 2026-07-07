@@ -1,7 +1,7 @@
 import { dstr, addDays, dowMon } from '../util.js';
 import { dayMacros } from '../engine/planner.js';
 import { targetsFor, activeTargets } from '../engine/targets.js';
-import { normalizeServings, portionPreview, entryFromPortion, reconcileCustomFood, customMacroSourceServing } from '../food/portion.js';
+import { normalizeServings, portionPreview, servingIndexForEntry, entryFromPortion, reconcileCustomFood, customMacroSourceServing } from '../food/portion.js';
 import { customFoodForBarcode, normalizeBarcode } from '../food/custom.js';
 import { lookupBarcode, searchFoods } from '../food/off.js';
 import { searchUsda, hydrateUsdaFood } from '../food/usda.js';
@@ -9,7 +9,7 @@ import { startScan, stopScan } from '../food/barcode.js';
 
 const MEALS = ['Breakfast', 'Lunch', 'Dinner', 'Snacks'];
 let date = dstr(), root, ctx, settings, mode = 'consumed', sheet = null;
-// sheet = {meal, tab, q, results, picked:{food, servingIdx, qty}|null, editing, recipeDraft, busy, msg}
+// sheet = {meal, tab, q, results, picked:{food, servingIdx, qty}|null, editEntry, editing, recipeDraft, busy, msg}
 
 // The targets in force for a given date: date-versioned coach prescription,
 // overridden by custom targets when selected, shaped by the planner's weekday.
@@ -86,9 +86,9 @@ async function render() {
       <h3 style="margin:0">${m.name}</h3>
       <span class="mealsum">${Math.round(ms.kcal)} Cal, ${Math.round(ms.p)}p, ${Math.round(ms.c)}c, ${Math.round(ms.f)}f</span></div>
       <button class="fab" data-add="${mi}" aria-label="Add to ${m.name}">+</button></div>
-      ${m.entries.map((e, ei) => `<div class="entry"><div>${e.label}
-        <small>${entryPortionLabel(e)} · P ${e.p} C ${e.c} F ${e.f}</small></div>
-        <div style="flex:none">${e.kcal} <button class="del" data-del="${mi}:${ei}">×</button></div></div>`).join('')}
+      ${m.entries.map((e, ei) => `<div class="entry">
+        ${entryMain(e, mi, ei)}
+        <div style="flex:none">${e.kcal} <button class="del" data-del="${mi}:${ei}" aria-label="Delete ${e.label}">×</button></div></div>`).join('')}
     </div>`;
   }).join('')}
   <button class="ghost" id="complete" style="width:100%">${log.complete ? '✓ Day marked complete' : 'Mark day complete'}</button>
@@ -106,6 +106,17 @@ function entryPortionLabel(e) {
   return e.grams > 0 ? `${e.grams} g` : 'portion';
 }
 
+function entryMain(e, meal, index) {
+  const content = `<span>${e.label}</span><small>${entryPortionLabel(e)} · P ${e.p} C ${e.c} F ${e.f}</small>`;
+  return canEditEntry(e)
+    ? `<button class="entryopen" data-entry="${meal}:${index}">${content}</button>`
+    : `<div class="entrytext">${content}</div>`;
+}
+
+function canEditEntry(e) {
+  return e.foodId && e.unit === 'serving' && !String(e.foodId).startsWith('recipe:');
+}
+
 function wire(log) {
   root.querySelectorAll('[data-nav]').forEach((b) => (b.onclick = () => { date = addDays(date, +b.dataset.nav); sheet = null; render(); }));
   root.querySelectorAll('[data-mode]').forEach((b) => (b.onclick = () => { mode = b.dataset.mode; render(); }));
@@ -118,7 +129,11 @@ function wire(log) {
     await save(log);
   };
   root.querySelectorAll('[data-add]').forEach((b) =>
-    (b.onclick = () => { sheet = { meal: +b.dataset.add, tab: 'search', q: '', results: [], picked: null, editing: false, recipeDraft: null, msg: '' }; render(); }));
+    (b.onclick = () => { sheet = { meal: +b.dataset.add, tab: 'search', q: '', results: [], picked: null, editEntry: null, editing: false, recipeDraft: null, msg: '' }; render(); }));
+  root.querySelectorAll('[data-entry]').forEach((b) => (b.onclick = async () => {
+    const [mi, ei] = b.dataset.entry.split(':').map(Number);
+    await openEntryEditor(log, mi, ei);
+  }));
   root.querySelectorAll('[data-del]').forEach((b) => (b.onclick = async () => {
     const [mi, ei] = b.dataset.del.split(':').map(Number);
     log.meals[mi].entries.splice(ei, 1);
@@ -136,6 +151,44 @@ async function addEntry(entry) {
   await ctx.db.put('logs', log);
   sheet = null;
   render();
+}
+
+async function updateEntry(entry) {
+  const log = (await ctx.db.get('logs', date)) ?? blankLog();
+  const target = sheet.editEntry;
+  if (!target) return;
+  log.meals[target.meal].entries[target.index] = entry;
+  await ctx.db.put('logs', log);
+  sheet = null;
+  render();
+}
+
+async function openEntryEditor(log, meal, index) {
+  const entry = log.meals[meal]?.entries[index];
+  if (!canEditEntry(entry)) return;
+  const food = await foodForEntry(entry);
+  if (!food) {
+    alert('This food is no longer in your saved foods. Search or scan it again to edit its servings.');
+    return;
+  }
+  sheet = {
+    meal, tab: 'search', q: '', results: [], picked: {
+      food,
+      servingIdx: servingIndexForEntry(food, entry),
+      qty: entry.qty || 1,
+    },
+    editEntry: { meal, index }, editing: false, recipeDraft: null, msg: '',
+  };
+  render();
+}
+
+async function foodForEntry(entry) {
+  const id = String(entry.foodId || '');
+  if (id.startsWith('custom:')) {
+    const food = await ctx.db.get('foods', +id.slice(7));
+    return food ? { ...food, id } : null;
+  }
+  return ctx.db.get('foodcache', id);
 }
 
 async function cacheFood(food) {
@@ -212,7 +265,7 @@ function detailView() {
     <div><b id="pc">${m.c}g</b><span>Carbs</span></div><div><b id="pf">${m.f}g</b><span>Fat</span></div>
   </div>
   <p class="hint" id="ppreview">${portionPreviewHint(sv, qty, m)}</p>
-  <button class="primary" id="paddconfirm">Add to ${MEALS[sheet.meal]}</button>`;
+  <button class="primary" id="paddconfirm">${sheet.editEntry ? `Update ${MEALS[sheet.meal]} entry` : `Add to ${MEALS[sheet.meal]}`}</button>`;
 }
 
 function portionPreviewHint(serving, qty, preview) {
@@ -366,7 +419,15 @@ function wireSheet(el) {
 
   /* detail */
   const pback = q('#pback');
-  if (pback) pback.onclick = () => { sheet.picked = null; renderSheetStable(); };
+  if (pback) pback.onclick = () => {
+    if (sheet.editEntry) {
+      sheet = null;
+      render();
+      return;
+    }
+    sheet.picked = null;
+    renderSheetStable();
+  };
   el.querySelectorAll('[data-serv]').forEach((b) =>
     (b.onclick = () => {
       sheet.picked.servingIdx = +b.dataset.serv;
@@ -386,7 +447,9 @@ function wireSheet(el) {
     const servings = normalizeServings(food);
     const sv = servings[Math.min(servingIdx, servings.length - 1)];
     await cacheFood({ ...food, servings });
-    await addEntry(entryFromPortion(food, sv, qty));
+    const entry = entryFromPortion(food, sv, qty);
+    if (sheet.editEntry) await updateEntry(entry);
+    else await addEntry(entry);
   };
 
   /* edit mode */
@@ -413,7 +476,7 @@ function wireSheet(el) {
     keepEdits(el);
     await persistFood({ ...sheet.picked.food, servings: normalizeServings(sheet.picked.food) });
     sheet.editing = false;
-    sheet.picked.servingIdx = 0;
+    sheet.picked.servingIdx = Math.min(sheet.picked.servingIdx, normalizeServings(sheet.picked.food).length - 1);
     renderSheetStable();
   };
 

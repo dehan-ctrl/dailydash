@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { normalizeServings, portionMacros, portionPreview, entryFromPortion, reconcileCustomFood, customMacroSourceServing } from '../js/food/portion.js';
+import { normalizeServings, portionMacros, portionPreview, servingIndexForEntry, entryFromPortion, reconcileCustomFood, customMacroSourceServing } from '../js/food/portion.js';
 
 const oats = {
   id: 'off:1', label: 'Oats', brand: 'Bulk',
@@ -59,6 +59,9 @@ test('portionPreview returns scaled macros and display grams for a selected serv
   assert.deepEqual(portionPreview(oats, oats.servings[1], 1.5), {
     kcal: 467, p: 20.3, c: 79.5, f: 8.3, grams: 120,
   });
+});
+test('servingIndexForEntry picks the serving used by a logged entry', () => {
+  assert.equal(servingIndexForEntry(oats, { servingLabel: '1 cup', grams: 160, qty: 2 }), 1);
 });
 test('reconcileCustomFood derives 100 g macros from a sized serving', () => {
   const food = reconcileCustomFood({

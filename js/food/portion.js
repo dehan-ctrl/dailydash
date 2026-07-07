@@ -47,6 +47,15 @@ export function portionPreview(food, serving, qty) {
   };
 }
 
+export function servingIndexForEntry(food, entry) {
+  const servings = normalizeServings(food);
+  const byLabelAndGrams = servings.findIndex((s) =>
+    s.label === entry?.servingLabel && s.grams > 0 && entry?.qty > 0 && Math.abs((s.grams * entry.qty) - entry.grams) < 0.2);
+  if (byLabelAndGrams >= 0) return byLabelAndGrams;
+  const byLabel = servings.findIndex((s) => s.label === entry?.servingLabel);
+  return byLabel >= 0 ? byLabel : 0;
+}
+
 export function customMacroSourceServing(food) {
   return normalizeServings(food).find((s) => s?.macros && s?.grams > 0 && s.grams !== 100) ?? null;
 }
