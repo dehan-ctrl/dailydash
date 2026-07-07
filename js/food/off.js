@@ -3,6 +3,7 @@ const BASE = 'https://world.openfoodfacts.org';
 const SEARCH_BASE = 'https://search.openfoodfacts.org';
 const FIELDS = 'code,product_name,brands,nutriments,serving_quantity,serving_size';
 const SEARCH_FIELDS = 'code,product_name,brands,nutriments,serving_quantity,serving_size';
+const SEARCH_PAGE_SIZE = 50;
 
 const brandText = (brands) => Array.isArray(brands) ? brands.join(', ') : brands || '';
 const nval = (n, key) => +n?.[key] || 0;
@@ -24,11 +25,26 @@ export function normalizeSearchHit(hit) {
   return normalizeProduct(hit);
 }
 
-export async function searchFoods(q) {
-  const u = `${SEARCH_BASE}/search?q=${encodeURIComponent(q)}&page_size=20&fields=${SEARCH_FIELDS}`;
-  const r = await fetch(u);
+export function buildOffSearchUrl(q, page = 1) {
+  return `${SEARCH_BASE}/search?q=${encodeURIComponent(q)}&page_size=${SEARCH_PAGE_SIZE}&page=${page}&fields=${SEARCH_FIELDS}`;
+}
+
+export function hasMoreOffPages(data) {
+  return (+data?.page || 1) < (+data?.page_count || 1);
+}
+
+export async function searchFoodsPage(q, page = 1) {
+  const r = await fetch(buildOffSearchUrl(q, page));
   if (!r.ok) throw new Error(`Open Food Facts error ${r.status}`);
-  return ((await r.json()).hits || []).map(normalizeSearchHit).filter(Boolean);
+  const data = await r.json();
+  return {
+    foods: (data.hits || []).map(normalizeSearchHit).filter(Boolean),
+    hasMore: hasMoreOffPages(data),
+  };
+}
+
+export async function searchFoods(q, page = 1) {
+  return (await searchFoodsPage(q, page)).foods;
 }
 
 export async function lookupBarcode(code) {

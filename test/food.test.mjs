@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { normalizeProduct, normalizeSearchHit } from '../js/food/off.js';
-import { buildUsdaSearchUrl, normalizeUsda, usdaServingsFromFood } from '../js/food/usda.js';
+import { buildOffSearchUrl, hasMoreOffPages, normalizeProduct, normalizeSearchHit } from '../js/food/off.js';
+import { buildUsdaSearchUrl, hasMoreUsdaPages, normalizeUsda, usdaServingsFromFood } from '../js/food/usda.js';
 
 test('OFF product normalizes to per-100g', () => {
   const r = normalizeProduct({
@@ -31,6 +31,16 @@ test('OFF Search-a-licious hit normalizes to per-100g', () => {
 });
 test('OFF Search-a-licious hit without nutrition data is dropped', () => {
   assert.equal(normalizeSearchHit({ code: '1', product_name: 'No macros' }), null);
+});
+test('OFF search URL requests larger paged result sets', () => {
+  const u = new URL(buildOffSearchUrl('oat milk', 3));
+  assert.equal(u.searchParams.get('q'), 'oat milk');
+  assert.equal(u.searchParams.get('page_size'), '50');
+  assert.equal(u.searchParams.get('page'), '3');
+});
+test('OFF paging uses response metadata instead of filtered result count', () => {
+  assert.equal(hasMoreOffPages({ page: 1, page_count: 3 }), true);
+  assert.equal(hasMoreOffPages({ page: 3, page_count: 3 }), false);
 });
 test('USDA food normalizes via nutrient ids', () => {
   const r = normalizeUsda({
@@ -76,6 +86,16 @@ test('USDA search URL uses a saved key when present', () => {
   const u = new URL(buildUsdaSearchUrl('banana bread', 'real-key'));
   assert.equal(u.searchParams.get('api_key'), 'real-key');
   assert.equal(u.searchParams.get('query'), 'banana bread');
+  assert.equal(u.searchParams.get('pageSize'), '50');
+  assert.equal(u.searchParams.get('pageNumber'), '1');
+});
+test('USDA search URL accepts a page number', () => {
+  const u = new URL(buildUsdaSearchUrl('oat milk', 'real-key', 4));
+  assert.equal(u.searchParams.get('pageNumber'), '4');
+});
+test('USDA paging uses response metadata instead of filtered result count', () => {
+  assert.equal(hasMoreUsdaPages({ currentPage: 1, totalPages: 2 }), true);
+  assert.equal(hasMoreUsdaPages({ currentPage: 2, totalPages: 2 }), false);
 });
 test('USDA search URL falls back to the bundled public key', () => {
   const u = new URL(buildUsdaSearchUrl('oats', ''));

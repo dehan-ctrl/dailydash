@@ -12,6 +12,19 @@ export async function mount(el, c) { root = el; ctx = c; preview = null; render(
 const daysBetween = (a, b) => Math.round((new Date(b + 'T12:00:00') - new Date(a + 'T12:00:00')) / 86400000);
 const GOAL_TITLES = { lose: 'Lose weight', gain: 'Gain weight', maintain: 'Maintain', reverse: 'Reverse diet' };
 
+export function goalProgress({ type, startKg, currentKg, goalKg }) {
+  if (!['lose', 'gain'].includes(type) || !(startKg > 0) || !(currentKg > 0) || !(goalKg > 0) || startKg === goalKg) return null;
+  const totalKg = Math.abs(goalKg - startKg);
+  const doneKg = type === 'lose' ? startKg - currentKg : currentKg - startKg;
+  const remainingKg = type === 'lose' ? currentKg - goalKg : goalKg - currentKg;
+  return {
+    pct: Math.max(0, Math.min(100, Math.round((doneKg / totalKg) * 100))),
+    remainingKg: +Math.max(0, remainingKg).toFixed(1),
+    doneKg: +Math.max(0, doneKg).toFixed(1),
+    totalKg: +totalKg.toFixed(1),
+  };
+}
+
 async function gather() {
   const [settings, allTargets, weighins, logs, checkins] = await Promise.all([
     ctx.db.get('settings', 'main'), ctx.db.getAll('targets'),
@@ -75,6 +88,12 @@ async function render() {
   const rateTxt = settings.goal.type === 'maintain' ? 'hold steady'
     : settings.goal.type === 'reverse' ? 'calories up, weight steady'
     : `${sign}${imp ? (kgToLb(rate)).toFixed(1) : rate.toFixed(2)} <small>${imp ? 'lb' : 'kg'}/week</small>`;
+  const progress = goalProgress({
+    type: settings.goal.type,
+    startKg: startW?.weightKg,
+    currentKg: curW?.trendKg,
+    goalKg: goalW,
+  });
 
   const lastCk = checkins[0]?.date ?? settings.onboardedAt;
   const sinceCk = Math.min(Math.max(daysBetween(lastCk, today), 0), 7);
@@ -92,6 +111,10 @@ async function render() {
       <div><b>${curW ? fmtWeight(curW.trendKg, settings.units) : '—'}</b><span>Current (trend)</span></div>
       <div><b>${goalW ? fmtWeight(goalW, settings.units) : '—'}</b><span>Goal</span></div>
     </div>
+    ${progress ? `<div class="goalbar" aria-label="Goal progress ${progress.pct}%">
+      <div class="goalbar-top"><span>${progress.pct}% to goal</span><b>${fmtWeight(progress.remainingKg, settings.units)} left</b></div>
+      <div class="goaltrack"><i style="width:${progress.pct}%"></i></div>
+    </div>` : `<p class="goalnote">${goalW ? 'Progress appears for lose/gain goals once weigh-ins exist.' : 'Set a goal weight to track progress.'}</p>`}
     <div class="pillrow">
       <button class="pill" id="changegoal">✏️ Change goal</button>
       <button class="pill" id="addwt">＋ Add weight</button>

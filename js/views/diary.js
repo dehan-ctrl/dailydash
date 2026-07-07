@@ -3,13 +3,13 @@ import { dayMacros } from '../engine/planner.js';
 import { targetsFor, activeTargets } from '../engine/targets.js';
 import { normalizeServings, portionPreview, servingIndexForEntry, entryFromPortion, reconcileCustomFood, customMacroSourceServing } from '../food/portion.js';
 import { customFoodForBarcode, normalizeBarcode } from '../food/custom.js';
-import { lookupBarcode, searchFoods } from '../food/off.js';
-import { searchUsda, hydrateUsdaFood } from '../food/usda.js';
+import { lookupBarcode, searchFoodsPage } from '../food/off.js';
+import { searchUsdaPage, hydrateUsdaFood } from '../food/usda.js';
 import { startScan, stopScan } from '../food/barcode.js';
 
 const MEALS = ['Breakfast', 'Lunch', 'Dinner', 'Snacks'];
 let date = dstr(), root, ctx, settings, mode = 'consumed', sheet = null;
-// sheet = {meal, tab, q, results, picked:{food, servingIdx, qty}|null, editEntry, editing, recipeDraft, busy, msg}
+// sheet = {meal, tab, q, searchPage, hasMore, results, picked:{food, servingIdx, qty}|null, editEntry, editing, recipeDraft, busy, msg}
 
 // The targets in force for a given date: date-versioned coach prescription,
 // overridden by custom targets when selected, shaped by the planner's weekday.
@@ -172,7 +172,7 @@ async function openEntryEditor(log, meal, index) {
     return;
   }
   sheet = {
-    meal, tab: 'search', q: '', results: [], picked: {
+    meal, tab: 'search', q: '', searchPage: 1, hasMore: false, results: [], picked: {
       food,
       servingIdx: servingIndexForEntry(food, entry),
       qty: entry.qty || 1,
@@ -197,16 +197,17 @@ async function cacheFood(food) {
   await ctx.db.put('foodcache', { ...prev, ...food, fav: prev?.fav || false, lastUsed: Date.now() });
 }
 
-async function searchFoodSources(query) {
+async function searchFoodSources(query, page = 1) {
   const settled = await Promise.allSettled([
-    searchFoods(query),
-    searchUsda(query, settings.usdaApiKey),
+    searchFoodsPage(query, page),
+    searchUsdaPage(query, settings.usdaApiKey, page),
   ]);
-  const [off, usda] = settled.map((r) => r.status === 'fulfilled' ? r.value : []);
+  const [off, usda] = settled.map((r) => r.status === 'fulfilled' ? r.value : { foods: [], hasMore: false });
   const errors = settled.map((r, i) => r.status === 'rejected'
     ? { source: i === 0 ? 'packaged-food' : 'USDA', message: r.reason?.message || 'unavailable' }
     : null).filter(Boolean);
-  const foods = [...off, ...usda];
+  const foods = [...off.foods, ...usda.foods];
+  const hasMore = off.hasMore || usda.hasMore;
   const usingBundledUsda = !settings.usdaApiKey?.trim();
   let msg = null;
   if (foods.length && errors.some((e) => e.source === 'packaged-food')) {
@@ -222,7 +223,7 @@ async function searchFoodSources(query) {
   } else if (!foods.length) {
     msg = { type: 'empty', text: `No foods with usable nutrition found for "${query}". Try another search or add a custom food.` };
   }
-  return { foods, msg };
+  return { foods, msg, hasMore };
 }
 
 // Persist edits (macros/servings) to wherever this food lives.
@@ -242,6 +243,11 @@ function resultRow(f, i, favs = {}) {
     <button class="open" data-open="${i}">${f.label}<small class="muted"> ${f.brand || ''}</small><br><small class="muted">${per}</small></button>
     <button class="fav ${favs[f.id] ? 'on' : ''}" data-fav="${i}">★</button>
     <button class="ghost" data-open="${i}">View</button></div>`;
+}
+
+function mergeFoods(existing, incoming) {
+  const seen = new Set(existing.map((f) => f.id));
+  return [...existing, ...incoming.filter((f) => !seen.has(f.id) && seen.add(f.id))];
 }
 
 /* food detail: serving picker + editable macros/servings */
@@ -333,7 +339,8 @@ async function renderSheet() {
       <div id="scanbox"></div>
       ${sheet.msg ? `<p class="${sheet.msg.type === 'error' ? 'msg' : 'muted'}">${sheet.msg.text}</p>` : ''}
       ${sheet.busy ? '<p class="muted">Searching...</p>' : ''}
-      ${(sheet.results || []).map((f, i) => resultRow(f, i, favs)).join('')}`;
+      ${(sheet.results || []).map((f, i) => resultRow(f, i, favs)).join('')}
+      ${sheet.hasMore && !sheet.busy ? '<button class="ghost" id="morefoods" style="width:100%;margin-top:10px">More results</button>' : ''}`;
   } else if (sheet.tab === 'recent') {
     const rec = favsList.sort((a, b) => (b.fav - a.fav) || (b.lastUsed - a.lastUsed)).slice(0, 30);
     sheet.results = rec;
@@ -371,7 +378,7 @@ function wireSheet(el) {
   const close = q('#close');
   if (close) close.onclick = () => { sheet = null; render(); };
   el.querySelectorAll('[data-tab]').forEach((b) =>
-    (b.onclick = () => { sheet.tab = b.dataset.tab; sheet.picked = null; sheet.results = []; sheet.msg = ''; renderSheetStable(); }));
+    (b.onclick = () => { sheet.tab = b.dataset.tab; sheet.picked = null; sheet.results = []; sheet.searchPage = 1; sheet.hasMore = false; sheet.msg = ''; renderSheetStable(); }));
   el.querySelectorAll('[data-open]').forEach((b) =>
     (b.onclick = async () => {
       const food = sheet.results[+b.dataset.open];
@@ -389,31 +396,37 @@ function wireSheet(el) {
   }));
 
   /* search */
+  const runSearch = async (append = false) => {
+    const query = q('#q')?.value.trim() || sheet.q;
+    if (!query) return;
+    sheet.q = query;
+    sheet.searchPage = append ? (sheet.searchPage || 1) + 1 : 1;
+    sheet.busy = true;
+    sheet.msg = '';
+    renderSheetStable();
+    try {
+      const { foods, msg, hasMore } = await searchFoodSources(sheet.q, sheet.searchPage);
+      const hydrated = await Promise.all(foods.map(async (f) =>
+        (await ctx.db.get('foodcache', f.id)) ?? f));
+      sheet.results = append ? mergeFoods(sheet.results || [], hydrated) : hydrated;
+      sheet.hasMore = hasMore;
+      sheet.msg = msg;
+    } catch (e) {
+      if (!append) sheet.results = [];
+      sheet.hasMore = false;
+      sheet.msg = { type: 'error', text: `Food search is temporarily unavailable: ${e.message}` };
+    } finally {
+      sheet.busy = false;
+      renderSheetStable();
+    }
+  };
   const go = q('#go');
   if (go) {
-    const run = async () => {
-      sheet.q = q('#q').value.trim();
-      if (!sheet.q) return;
-      sheet.busy = true;
-      sheet.msg = '';
-      renderSheetStable();
-      try {
-        const { foods, msg } = await searchFoodSources(sheet.q);
-        // prefer any locally saved copy (with the user's servings/edits)
-        sheet.results = await Promise.all(foods.map(async (f) =>
-          (await ctx.db.get('foodcache', f.id)) ?? f));
-        sheet.msg = msg;
-      } catch (e) {
-        sheet.results = [];
-        sheet.msg = { type: 'error', text: `Food search is temporarily unavailable: ${e.message}` };
-      } finally {
-        sheet.busy = false;
-        renderSheetStable();
-      }
-    };
-    go.onclick = run;
-    q('#q').onkeydown = (e) => { if (e.key === 'Enter') run(); };
+    go.onclick = () => runSearch(false);
+    q('#q').onkeydown = (e) => { if (e.key === 'Enter') runSearch(false); };
   }
+  const more = q('#morefoods');
+  if (more) more.onclick = () => runSearch(true);
   const scan = q('#scan');
   if (scan) scan.onclick = () => startBarcodeScan(el);
 

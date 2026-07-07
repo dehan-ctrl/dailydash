@@ -2,6 +2,7 @@
 // app key keeps search working on a fresh install.
 const NUTRIENT = { kcal: 1008, p: 1003, c: 1005, f: 1004 };
 const DEFAULT_API_KEY = 'ZfG8R935gi2GI9b0n1C30bx90eJ4KS65iqRocf4m';
+const SEARCH_PAGE_SIZE = 50;
 
 function portionLabel(p) {
   const amount = p?.amount != null ? `${p.amount}` : '';
@@ -39,16 +40,28 @@ export function normalizeUsda(f) {
   };
 }
 
-export function buildUsdaSearchUrl(q, apiKey) {
+export function buildUsdaSearchUrl(q, apiKey, page = 1) {
   const key = apiKey?.trim() || DEFAULT_API_KEY;
   return `https://api.nal.usda.gov/fdc/v1/foods/search?api_key=${encodeURIComponent(key)}` +
-    `&query=${encodeURIComponent(q)}&pageSize=15&dataType=Foundation,SR%20Legacy,Branded`;
+    `&query=${encodeURIComponent(q)}&pageSize=${SEARCH_PAGE_SIZE}&pageNumber=${page}&dataType=Foundation,SR%20Legacy,Branded`;
 }
 
-export async function searchUsda(q, apiKey) {
-  const r = await fetch(buildUsdaSearchUrl(q, apiKey));
+export function hasMoreUsdaPages(data) {
+  return (+data?.currentPage || 1) < (+data?.totalPages || 1);
+}
+
+export async function searchUsdaPage(q, apiKey, page = 1) {
+  const r = await fetch(buildUsdaSearchUrl(q, apiKey, page));
   if (!r.ok) throw new Error(`USDA error ${r.status}`);
-  return ((await r.json()).foods || []).map(normalizeUsda).filter(Boolean);
+  const data = await r.json();
+  return {
+    foods: (data.foods || []).map(normalizeUsda).filter(Boolean),
+    hasMore: hasMoreUsdaPages(data),
+  };
+}
+
+export async function searchUsda(q, apiKey, page = 1) {
+  return (await searchUsdaPage(q, apiKey, page)).foods;
 }
 
 export async function hydrateUsdaFood(food, apiKey) {

@@ -220,6 +220,12 @@ button.loading::after {
 .triple { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; text-align: center; margin-top: 12px; }
 .triple b { display: block; font-variant-numeric: tabular-nums; }
 .triple span { font-size: .75rem; color: var(--muted); }
+.goalbar { margin-top: 14px; }
+.goalbar-top { display: flex; justify-content: space-between; gap: 10px; font-size: .82rem; color: var(--muted); }
+.goalbar-top b { color: var(--text); font-variant-numeric: tabular-nums; }
+.goaltrack { height: 10px; overflow: hidden; border-radius: 999px; background: color-mix(in srgb, var(--surface) 52%, transparent); border: 1px solid var(--line); margin-top: 6px; }
+.goaltrack i { display: block; height: 100%; border-radius: 999px; background: var(--accent); transition: width .25s ease; }
+.goalnote { margin: 12px 0 0; color: var(--muted); font-size: .82rem; text-align: center; }
 .dots { display: flex; gap: 5px; margin: 10px 0 6px; }
 .dots i { flex: 1; height: 6px; border-radius: 3px; background: var(--surface2); }
 .dots i.on { background: var(--accent); }
