@@ -1,10 +1,10 @@
-const CACHE = 'macrocoach-v11'; // bump on every deploy that changes shipped files
+const CACHE = 'macrocoach-v12'; // bump on every deploy that changes shipped files
 const SHELL = [
   './', 'index.html', 'css/app.css', 'manifest.webmanifest',
   'js/app.js', 'js/backup.js', 'js/db.js', 'js/units.js', 'js/util.js', 'js/charts.js',
   'js/engine/prescribe.js', 'js/engine/trend.js', 'js/engine/checkin.js', 'js/engine/planner.js',
   'js/engine/targets.js',
-  'js/food/off.js', 'js/food/usda.js', 'js/food/barcode.js', 'js/food/portion.js',
+  'js/food/off.js', 'js/food/usda.js', 'js/food/barcode.js', 'js/food/portion.js', 'js/food/custom.js',
   'js/views/onboarding.js', 'js/views/diary.js', 'js/views/coach.js',
   'js/views/me.js', 'js/views/plan.js', 'js/views/settings.js',
   'vendor/zxing.min.js',

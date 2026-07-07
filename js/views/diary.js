@@ -2,6 +2,7 @@ import { dstr, addDays, dowMon } from '../util.js';
 import { dayMacros } from '../engine/planner.js';
 import { targetsFor, activeTargets } from '../engine/targets.js';
 import { normalizeServings, servingMacros, scaleMacros, entryFromPortion, reconcileCustomFood, customMacroSourceServing } from '../food/portion.js';
+import { customFoodForBarcode, normalizeBarcode } from '../food/custom.js';
 import { lookupBarcode, searchFoods } from '../food/off.js';
 import { searchUsda, hydrateUsdaFood } from '../food/usda.js';
 import { startScan, stopScan } from '../food/barcode.js';
@@ -230,6 +231,7 @@ function editView(food, servings) {
   return `<div class="backbar"><button class="ghost" id="peditback">‹ Cancel</button>
     <h2 style="flex:1">Edit food</h2></div>
   <label>Name</label><input id="ename" value="${food.label}">
+  <label>Barcode (optional)</label><input id="ebarcode" inputmode="numeric" value="${food.barcode || ''}" placeholder="Scan or type barcode">
   <label>Macros per 100 g</label>
   <div class="macroedit">
     <label>Calories<input id="ek" type="number" step="0.1" value="${food.per100g.kcal}"></label>
@@ -282,6 +284,7 @@ async function renderSheet() {
     body = `${sheet.results.map((f, i) => resultRow(f, i, favs)).join('')}
       <h3 style="margin-top:12px">New custom food (per 100 g)</h3>
       <input id="cname" placeholder="Name">
+      <input id="cbarcode" inputmode="numeric" placeholder="barcode (optional)">
       <div class="row"><input id="ck" type="number" placeholder="kcal"><input id="cp" type="number" placeholder="protein"></div>
       <div class="row"><input id="cc" type="number" placeholder="carbs"><input id="cf" type="number" placeholder="fat"></div>
       <div class="row"><input id="cslabel" placeholder="serving name (e.g. 1 scoop)"><input id="csgrams" type="number" placeholder="grams"></div>
@@ -409,7 +412,7 @@ function wireSheet(el) {
     if (!name) return;
     const grams = +q('#csgrams').value, slabel = q('#cslabel').value.trim();
     await ctx.db.put('foods', reconcileCustomFood({
-      source: 'custom', label: name, brand: '',
+      source: 'custom', label: name, brand: '', barcode: normalizeBarcode(q('#cbarcode').value),
       per100g: { kcal: +q('#ck').value || 0, p: +q('#cp').value || 0, c: +q('#cc').value || 0, f: +q('#cf').value || 0 },
       servings: grams > 0 ? [{ label: '100 g', grams: 100 }, { label: slabel || `${grams} g`, grams }] : [{ label: '100 g', grams: 100 }],
     }));
@@ -439,6 +442,7 @@ function keepEdits(el) {
   const food = sheet.picked.food;
   if (!q('#ename')) return;
   food.label = q('#ename').value.trim() || food.label;
+  food.barcode = normalizeBarcode(q('#ebarcode')?.value);
   food.per100g = {
     kcal: +q('#ek').value || 0, p: +q('#ep').value || 0,
     c: +q('#ec').value || 0, f: +q('#ef').value || 0,
@@ -567,7 +571,8 @@ async function startBarcodeScan(el) {
     await startScan(video, async (code) => {
       stopScan();
       box.querySelector('#scanmsg').textContent = `Looking up ${code}…`;
-      const food = (await ctx.db.get('foodcache', 'off:' + code)) ?? await lookupBarcode(code);
+      const custom = customFoodForBarcode(await ctx.db.getAll('foods'), code);
+      const food = custom ?? (await ctx.db.get('foodcache', 'off:' + code)) ?? await lookupBarcode(code);
       if (!food) {
         box.querySelector('#scanmsg').textContent = `No product found for ${code}.`;
         return;
