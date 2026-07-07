@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { runCheckin, applyKcalChange } from '../js/engine/checkin.js';
 
 const base = {
-  goal: { type: 'lose', ratePctPerWeek: 0.5 }, sex: 'm',
+  goal: { type: 'lose', rateKgPerWeek: 0.45 }, sex: 'm',
   targets: { kcal: 2400, proteinG: 180, carbG: 240, fatG: 80 },
   weightKg: 90, trendStartKg: 90.4, trendEndKg: 90.0,
   avgIntakeKcal: 2380, loggedDays: 7, weighinCount: 7,
@@ -46,7 +46,7 @@ test('adjustment respects sex floor', () => {
 });
 test('reverse diet adds ~100 when trend is flat', () => {
   const r = runCheckin({
-    ...base, goal: { type: 'reverse', ratePctPerWeek: 0 },
+    ...base, goal: { type: 'reverse', rateKgPerWeek: 0 },
     trendStartKg: 90.0, trendEndKg: 90.05, avgIntakeKcal: 2400,
   });
   assert.equal(r.change, 'adjust');
@@ -54,21 +54,21 @@ test('reverse diet adds ~100 when trend is flat', () => {
 });
 test('reverse diet holds when gaining too fast', () => {
   const r = runCheckin({
-    ...base, goal: { type: 'reverse', ratePctPerWeek: 0 },
+    ...base, goal: { type: 'reverse', rateKgPerWeek: 0 },
     trendStartKg: 90.0, trendEndKg: 90.4,
   });
   assert.equal(r.change, 'hold');
 });
 test('maintain holds inside ±1% band', () => {
   const r = runCheckin({
-    ...base, goal: { type: 'maintain', ratePctPerWeek: 0, goalWeightKg: 90 },
+    ...base, goal: { type: 'maintain', rateKgPerWeek: 0, goalWeightKg: 90 },
     trendStartKg: 90.0, trendEndKg: 90.5, // 0.55% off goal
   });
   assert.equal(r.change, 'hold');
 });
 test('maintain steers back when outside band', () => {
   const r = runCheckin({
-    ...base, goal: { type: 'maintain', ratePctPerWeek: 0, goalWeightKg: 90 },
+    ...base, goal: { type: 'maintain', rateKgPerWeek: 0, goalWeightKg: 90 },
     trendStartKg: 91.0, trendEndKg: 91.2,
   });
   assert.equal(r.change, 'adjust');

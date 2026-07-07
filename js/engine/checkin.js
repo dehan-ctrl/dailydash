@@ -1,11 +1,12 @@
 // Weekly check-in decision logic. Pure. All inputs precomputed by the caller.
-import { kcalFloor } from './prescribe.js';
+import { kcalFloor, clampRateKg } from './prescribe.js';
 
 const KCAL_PER_KG = 7700;
 
 export function targetRateKgPerWeek(goal, weightKg) {
-  if (goal.type === 'lose') return -(goal.ratePctPerWeek / 100) * weightKg;
-  if (goal.type === 'gain') return (goal.ratePctPerWeek / 100) * weightKg;
+  const r = clampRateKg(goal, weightKg);
+  if (goal.type === 'lose') return -r;
+  if (goal.type === 'gain') return r;
   return 0; // maintain, reverse
 }
 
