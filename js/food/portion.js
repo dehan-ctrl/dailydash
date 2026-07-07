@@ -40,6 +40,17 @@ export function scaleMacros(macros, qty) {
   };
 }
 
+export function reconcileCustomFood(food) {
+  const servings = normalizeServings(food);
+  const source = servings.find((s) => s?.macros && s?.grams > 0 && s.grams !== 100);
+  if (!source) return { ...food, servings };
+  return {
+    ...food,
+    servings,
+    per100g: scaleMacros(source.macros, 100 / source.grams),
+  };
+}
+
 export function entryFromPortion(food, serving, qty) {
   const grams = serving.grams > 0 ? serving.grams * qty : 0;
   const macros = scaleMacros(servingMacros(food, serving), qty);

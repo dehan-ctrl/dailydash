@@ -1,7 +1,7 @@
 import { dstr, addDays, dowMon } from '../util.js';
 import { dayMacros } from '../engine/planner.js';
 import { targetsFor, activeTargets } from '../engine/targets.js';
-import { normalizeServings, servingMacros, scaleMacros, entryFromPortion } from '../food/portion.js';
+import { normalizeServings, servingMacros, scaleMacros, entryFromPortion, reconcileCustomFood } from '../food/portion.js';
 import { lookupBarcode, searchFoods } from '../food/off.js';
 import { searchUsda, hydrateUsdaFood } from '../food/usda.js';
 import { startScan, stopScan } from '../food/barcode.js';
@@ -175,7 +175,7 @@ async function searchFoodSources(query) {
 async function persistFood(food) {
   if (String(food.id).startsWith('custom:')) {
     const numId = +String(food.id).slice(7);
-    await ctx.db.put('foods', { ...food, id: numId });
+    await ctx.db.put('foods', { ...reconcileCustomFood({ ...food, id: numId }), id: numId });
   } else {
     const prev = await ctx.db.get('foodcache', food.id);
     await ctx.db.put('foodcache', { ...prev, ...food, lastUsed: Date.now() });
@@ -406,11 +406,11 @@ function wireSheet(el) {
     const name = q('#cname').value.trim();
     if (!name) return;
     const grams = +q('#csgrams').value, slabel = q('#cslabel').value.trim();
-    await ctx.db.put('foods', {
+    await ctx.db.put('foods', reconcileCustomFood({
       source: 'custom', label: name, brand: '',
       per100g: { kcal: +q('#ck').value || 0, p: +q('#cp').value || 0, c: +q('#cc').value || 0, f: +q('#cf').value || 0 },
       servings: grams > 0 ? [{ label: '100 g', grams: 100 }, { label: slabel || `${grams} g`, grams }] : [{ label: '100 g', grams: 100 }],
-    });
+    }));
     renderSheetStable();
   };
 
