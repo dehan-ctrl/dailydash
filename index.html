@@ -17,7 +17,28 @@
 <script src="vendor/zxing.min.js" defer></script>
 <script type="module" src="js/app.js"></script>
 <script>
-if ('serviceWorker' in navigator) addEventListener('load', () => navigator.serviceWorker.register('sw.js'));
+if ('serviceWorker' in navigator) {
+  let refreshing = false;
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (refreshing) return;
+    refreshing = true;
+    location.reload();
+  });
+  addEventListener('load', async () => {
+    const registration = await navigator.serviceWorker.register('sw.js', { updateViaCache: 'none' });
+    registration.update();
+    if (registration.waiting) registration.waiting.postMessage({ type: 'SKIP_WAITING' });
+    registration.addEventListener('updatefound', () => {
+      const worker = registration.installing;
+      if (!worker) return;
+      worker.addEventListener('statechange', () => {
+        if (worker.state === 'installed' && navigator.serviceWorker.controller) {
+          worker.postMessage({ type: 'SKIP_WAITING' });
+        }
+      });
+    });
+  });
+}
 </script>
 </body>
 </html>

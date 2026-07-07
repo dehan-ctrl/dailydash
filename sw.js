@@ -1,4 +1,4 @@
-const CACHE = 'macrocoach-v17'; // bump on every deploy that changes shipped files
+const CACHE = 'macrocoach-v18'; // bump on every deploy that changes shipped files
 const SHELL = [
   './', 'index.html', 'css/app.css', 'manifest.webmanifest',
   'js/app.js', 'js/backup.js', 'js/db.js', 'js/units.js', 'js/util.js', 'js/charts.js',
@@ -19,9 +19,16 @@ self.addEventListener('activate', (e) => {
     .then((ks) => Promise.all(ks.filter((k) => k !== CACHE && k !== CACHE + '-api').map((k) => caches.delete(k))))
     .then(() => self.clients.claim()));
 });
+self.addEventListener('message', (e) => {
+  if (e.data?.type === 'SKIP_WAITING') self.skipWaiting();
+});
 self.addEventListener('fetch', (e) => {
   if (e.request.method !== 'GET') return;
   const url = new URL(e.request.url);
+  if (e.request.mode === 'navigate') {
+    e.respondWith(fetch(e.request).catch(() => caches.match('./')));
+    return;
+  }
   if (url.origin === location.origin) {
     e.respondWith(caches.match(e.request, { ignoreSearch: true }).then((r) => r || fetch(e.request)));
   } else {
