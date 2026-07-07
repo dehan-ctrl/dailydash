@@ -15,7 +15,7 @@ A personal diet-coach PWA (Carbon-style adaptive macro coaching). Spec:
 - Calorie floor: 1200 kcal (female) / 1500 kcal (male), everywhere.
 
 ## Commands
-- Tests: `node --test test/`
+- Tests: `node --test` (auto-discovers test/*.test.mjs)
 - Local serve: `python3 -m http.server 8000` → http://localhost:8000/
 - Deploy: push to `main` (GitHub Pages serves repo root). Bump `CACHE` in
   `sw.js` whenever shipped files change.
