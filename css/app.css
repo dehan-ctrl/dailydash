@@ -1,1 +1,126 @@
-body { font-family: -apple-system, system-ui, sans-serif; margin: 2rem; }
+:root {
+  --bg: #0e131a; --surface: #171f29; --surface2: #202a37; --line: #2b3745;
+  --text: #e8edf2; --muted: #8b98a5; --accent: #b8e62e; --accent-ink: #16200a;
+  --danger: #ff6b5e; --ok: #4cd97b;
+  --radius: 14px;
+  color-scheme: dark;
+}
+@media (prefers-color-scheme: light) {
+  :root {
+    --bg: #f4f6f8; --surface: #ffffff; --surface2: #eef1f4; --line: #dde3e9;
+    --text: #17202a; --muted: #5d6b78; --accent: #5a9e00; --accent-ink: #ffffff;
+    color-scheme: light;
+  }
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; }
+body {
+  font: 16px/1.45 -apple-system, system-ui, 'Segoe UI', sans-serif;
+  background: var(--bg); color: var(--text);
+  padding-bottom: calc(64px + env(safe-area-inset-bottom));
+}
+h1, h2, h3 { margin: 0 0 .5rem; letter-spacing: -0.01em; }
+h1 { font-size: 1.5rem; } h2 { font-size: 1.15rem; } h3 { font-size: 1rem; }
+#view { max-width: 480px; margin: 0 auto; padding: 16px 14px 24px; }
+
+/* tab bar */
+#tabbar {
+  position: fixed; bottom: 0; left: 0; right: 0; display: flex; z-index: 20;
+  background: color-mix(in srgb, var(--surface) 88%, transparent);
+  backdrop-filter: blur(12px); border-top: 1px solid var(--line);
+  padding-bottom: env(safe-area-inset-bottom);
+}
+#tabbar button {
+  flex: 1; padding: 12px 0 10px; background: none; border: 0;
+  color: var(--muted); font: inherit; font-size: .8rem; font-weight: 600;
+}
+#tabbar button.active { color: var(--accent); }
+body.onboarding #tabbar { display: none; }
+
+/* cards & layout */
+.card {
+  background: var(--surface); border: 1px solid var(--line);
+  border-radius: var(--radius); padding: 14px; margin-bottom: 12px;
+}
+.row { display: flex; gap: 10px; align-items: center; }
+.row > * { flex: 1; }
+.spread { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.muted { color: var(--muted); font-size: .85rem; }
+.hint { color: var(--muted); font-size: .8rem; margin: .4rem 0 0; }
+.msg { color: var(--danger); font-size: .85rem; margin: .4rem 0 0; }
+
+/* forms */
+label { display: block; font-size: .8rem; font-weight: 600; color: var(--muted); margin: 10px 0 4px; }
+input, select, textarea {
+  width: 100%; padding: 10px 12px; font: inherit; color: var(--text);
+  background: var(--surface2); border: 1px solid var(--line); border-radius: 10px;
+}
+input:focus, select:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+button.primary {
+  width: 100%; padding: 13px; margin-top: 14px; font: inherit; font-weight: 700;
+  background: var(--accent); color: var(--accent-ink); border: 0; border-radius: 12px;
+}
+button.ghost {
+  padding: 9px 13px; font: inherit; font-size: .85rem; font-weight: 600;
+  background: var(--surface2); color: var(--text); border: 1px solid var(--line); border-radius: 10px;
+}
+button.danger { background: var(--danger); color: #fff; border: 0; }
+button:active { transform: scale(.985); }
+
+/* segmented choice */
+.seg { display: flex; background: var(--surface2); border-radius: 10px; padding: 3px; gap: 3px; }
+.seg button {
+  flex: 1; border: 0; background: none; color: var(--muted); font: inherit;
+  font-size: .85rem; font-weight: 600; padding: 8px 4px; border-radius: 8px;
+}
+.seg button.on { background: var(--surface); color: var(--text); box-shadow: 0 1px 3px rgb(0 0 0 / .25); }
+
+/* macro rings */
+.rings { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+.ring { text-align: center; }
+.ring svg { width: 100%; max-width: 76px; transform: rotate(-90deg); }
+.ring-bg { fill: none; stroke: var(--surface2); stroke-width: 7; }
+.ring-fg { fill: none; stroke: var(--accent); stroke-width: 7; stroke-linecap: round; }
+.ring-fg.over { stroke: var(--danger); }
+.ring b { display: block; font-size: .95rem; margin-top: -4px; }
+.ring span { font-size: .68rem; color: var(--muted); }
+
+/* meals & entries */
+.meal { margin-bottom: 10px; }
+.entry { display: flex; justify-content: space-between; gap: 8px; padding: 7px 0; border-top: 1px solid var(--line); font-size: .9rem; }
+.entry small { color: var(--muted); display: block; }
+.entry .del { background: none; border: 0; color: var(--danger); font-size: 1rem; padding: 0 4px; }
+
+/* bottom sheet */
+.sheet-back { position: fixed; inset: 0; background: rgb(0 0 0 / .5); z-index: 30; }
+.sheet {
+  position: fixed; left: 0; right: 0; bottom: 0; z-index: 31; max-height: 85vh; overflow-y: auto;
+  background: var(--surface); border-radius: 18px 18px 0 0; padding: 16px 14px calc(20px + env(safe-area-inset-bottom));
+  max-width: 480px; margin: 0 auto;
+}
+.result { display: flex; justify-content: space-between; gap: 8px; padding: 9px 0; border-top: 1px solid var(--line); font-size: .9rem; align-items: center; }
+.result button { flex: none; }
+.fav { background: none; border: 0; font-size: 1.05rem; color: var(--muted); }
+.fav.on { color: var(--accent); }
+
+/* planner */
+.planday { display: grid; grid-template-columns: 44px 1fr 84px 40px; gap: 8px; align-items: center; padding: 6px 0; }
+.planday input[type='number'] { text-align: right; }
+.lock { background: none; border: 0; font-size: 1.1rem; opacity: .45; }
+.lock.on { opacity: 1; }
+
+/* charts */
+.chart svg { width: 100%; height: auto; display: block; }
+.chart-line { fill: none; stroke: var(--accent); stroke-width: 2; }
+.chart-line2 { fill: none; stroke: var(--muted); stroke-width: 1.5; stroke-dasharray: 4 3; }
+.chart-dot { fill: var(--muted); opacity: .55; }
+.chart-grid { stroke: var(--line); stroke-width: 1; }
+.chart-lbl { fill: var(--muted); font-size: 9px; font-family: inherit; }
+.chart-bar { fill: var(--accent); opacity: .85; }
+.chart-bar.over { fill: var(--danger); }
+
+/* misc */
+.banner { background: var(--accent); color: var(--accent-ink); border-radius: var(--radius); padding: 12px 14px; font-weight: 600; margin-bottom: 12px; }
+.wizard .stepnum { color: var(--muted); font-size: .8rem; margin-bottom: 2px; }
+.checkin-rec { border-top: 1px solid var(--line); padding: 10px 0; font-size: .9rem; }
+video.scanner { width: 100%; border-radius: var(--radius); background: #000; aspect-ratio: 3/4; object-fit: cover; }
