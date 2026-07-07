@@ -1,7 +1,7 @@
 import { dstr, addDays, dowMon } from '../util.js';
 import { dayMacros } from '../engine/planner.js';
 import { targetsFor, activeTargets } from '../engine/targets.js';
-import { normalizeServings, servingMacros, scaleMacros, entryFromPortion, reconcileCustomFood, customMacroSourceServing } from '../food/portion.js';
+import { normalizeServings, portionPreview, entryFromPortion, reconcileCustomFood, customMacroSourceServing } from '../food/portion.js';
 import { customFoodForBarcode, normalizeBarcode } from '../food/custom.js';
 import { lookupBarcode, searchFoods } from '../food/off.js';
 import { searchUsda, hydrateUsdaFood } from '../food/usda.js';
@@ -196,7 +196,7 @@ function detailView() {
   const { food, servingIdx, qty } = sheet.picked;
   const servings = normalizeServings(food);
   const sv = servings[Math.min(servingIdx, servings.length - 1)];
-  const m = scaleMacros(servingMacros(food, sv), qty);
+  const m = portionPreview(food, sv, qty);
   if (sheet.editing) return editView(food, servings);
   return `<div class="backbar"><button class="ghost" id="pback">‹ Back</button>
     <h2 style="flex:1">${food.label}</h2>
@@ -208,11 +208,17 @@ function detailView() {
   <label>How many servings? (0.5 = half)</label>
   <input type="number" id="pqty" step="0.25" min="0" value="${qty}">
   <div class="macrogrid">
-    <div><b>${m.kcal}</b><span>Calories</span></div><div><b>${m.p}g</b><span>Protein</span></div>
-    <div><b>${m.c}g</b><span>Carbs</span></div><div><b>${m.f}g</b><span>Fat</span></div>
+    <div><b id="pkcal">${m.kcal}</b><span>Calories</span></div><div><b id="pp">${m.p}g</b><span>Protein</span></div>
+    <div><b id="pc">${m.c}g</b><span>Carbs</span></div><div><b id="pf">${m.f}g</b><span>Fat</span></div>
   </div>
-  <p class="hint">${sv.grams > 0 ? `${qty} × ${sv.label} = ${+(sv.grams * qty).toFixed(1)} g` : `Serving macros are entered directly for ${sv.label}.`}</p>
+  <p class="hint" id="ppreview">${portionPreviewHint(sv, qty, m)}</p>
   <button class="primary" id="paddconfirm">Add to ${MEALS[sheet.meal]}</button>`;
+}
+
+function portionPreviewHint(serving, qty, preview) {
+  return serving.grams > 0
+    ? `${qty} × ${serving.label} = ${preview.grams} g`
+    : `Serving macros are entered directly for ${serving.label}.`;
 }
 
 function editView(food, servings) {
@@ -362,14 +368,20 @@ function wireSheet(el) {
   const pback = q('#pback');
   if (pback) pback.onclick = () => { sheet.picked = null; renderSheetStable(); };
   el.querySelectorAll('[data-serv]').forEach((b) =>
-    (b.onclick = () => { sheet.picked.servingIdx = +b.dataset.serv; sheet.picked.qty = +q('#pqty').value || 1; renderSheetStable(); }));
+    (b.onclick = () => {
+      sheet.picked.servingIdx = +b.dataset.serv;
+      sheet.picked.qty = +q('#pqty').value || 0;
+      el.querySelectorAll('[data-serv]').forEach((chip) => chip.classList.toggle('on', chip === b));
+      updatePortionPreview(el);
+    }));
   const pqty = q('#pqty');
-  if (pqty && !sheet.editing) pqty.onchange = () => { sheet.picked.qty = +pqty.value || 0; renderSheetStable(); };
+  if (pqty && !sheet.editing) pqty.oninput = () => { sheet.picked.qty = +pqty.value || 0; updatePortionPreview(el); };
   const pedit = q('#pedit');
   if (pedit) pedit.onclick = () => { sheet.editing = true; renderSheetStable(); };
   const confirm = q('#paddconfirm');
   if (confirm) confirm.onclick = async () => {
-    const { food, servingIdx, qty } = sheet.picked;
+    const { food, servingIdx } = sheet.picked;
+    const qty = +q('#pqty')?.value || 0;
     if (!qty) return;
     const servings = normalizeServings(food);
     const sv = servings[Math.min(servingIdx, servings.length - 1)];
@@ -426,6 +438,23 @@ function wireSheet(el) {
     kcal: +q('#qk').value || 0, p: +q('#qp').value || 0, c: +q('#qc').value || 0, f: +q('#qf').value || 0,
   });
   wireRecipeTab(el);
+}
+
+function updatePortionPreview(el) {
+  if (!sheet?.picked || sheet.editing) return;
+  const { food, servingIdx, qty } = sheet.picked;
+  const servings = normalizeServings(food);
+  const sv = servings[Math.min(servingIdx, servings.length - 1)];
+  const m = portionPreview(food, sv, qty);
+  const set = (id, value) => {
+    const node = el.querySelector(id);
+    if (node) node.textContent = value;
+  };
+  set('#pkcal', m.kcal);
+  set('#pp', `${m.p}g`);
+  set('#pc', `${m.c}g`);
+  set('#pf', `${m.f}g`);
+  set('#ppreview', portionPreviewHint(sv, qty, m));
 }
 
 async function renderSheetStable() {

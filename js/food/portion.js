@@ -40,6 +40,13 @@ export function scaleMacros(macros, qty) {
   };
 }
 
+export function portionPreview(food, serving, qty) {
+  return {
+    ...scaleMacros(servingMacros(food, serving), qty),
+    grams: serving?.grams > 0 ? +(serving.grams * qty).toFixed(1) : 0,
+  };
+}
+
 export function customMacroSourceServing(food) {
   return normalizeServings(food).find((s) => s?.macros && s?.grams > 0 && s.grams !== 100) ?? null;
 }
@@ -56,8 +63,7 @@ export function reconcileCustomFood(food) {
 }
 
 export function entryFromPortion(food, serving, qty) {
-  const grams = serving.grams > 0 ? serving.grams * qty : 0;
-  const macros = scaleMacros(servingMacros(food, serving), qty);
+  const { grams, ...macros } = portionPreview(food, serving, qty);
   return {
     label: food.label, brand: food.brand || '', foodId: food.id ?? null,
     qty, unit: 'serving', servingLabel: serving.label, grams: +grams.toFixed(1),
