@@ -13,12 +13,31 @@ export async function navigate(id) {
   const main = document.getElementById('view');
   main.innerHTML = '';
   main.scrollTop = 0;
+  document.body.classList.remove('sheet-open');
   try {
     (await import(`./views/${id}.js`)).mount(main, ctx);
   } catch (e) {
     main.innerHTML = `<div class="card"><h2>${id}</h2><p>Something went wrong loading this screen.</p></div>`;
     console.error(e);
   }
+}
+
+// iOS keyboard guard: publish the keyboard's overlap as --kb (the bottom
+// sheet pads by it so fields stay reachable), and undo the layout-viewport
+// scroll iOS applies when focusing an input — left in place, it shifts the
+// whole app up and strands a dead band at the bottom of the screen.
+function setupViewportGuard() {
+  const vv = window.visualViewport;
+  if (!vv) return;
+  const apply = () => {
+    const kb = Math.max(0, window.innerHeight - vv.height - vv.offsetTop);
+    document.documentElement.style.setProperty('--kb', `${Math.round(kb)}px`);
+    if (kb < 1 && (window.scrollY || window.scrollX)) window.scrollTo(0, 0);
+  };
+  vv.addEventListener('resize', apply);
+  vv.addEventListener('scroll', apply);
+  window.addEventListener('focusout', () => setTimeout(apply, 250));
+  apply();
 }
 
 // Pull-to-refresh: drag down from the top of the view to re-render the
@@ -103,6 +122,7 @@ async function boot() {
   tb.innerHTML = TABS.map(([id, l]) => `<button data-id="${id}">${l}</button>`).join('');
   tb.onclick = (e) => { const b = e.target.closest('button'); if (b) navigate(b.dataset.id); };
   setupPullToRefresh(document.getElementById('view'));
+  setupViewportGuard();
   let settings = await db.get('settings', 'main');
   if (!settings) {
     document.body.classList.add('onboarding');

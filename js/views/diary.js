@@ -91,6 +91,7 @@ async function render() {
     </div>`;
   }).join('')}
   <div id="sheetroot"></div>`;
+  document.body.classList.toggle('sheet-open', !!sheet);
   wire(log);
   if (sheet) renderSheet();
 }

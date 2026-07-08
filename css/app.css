@@ -24,8 +24,11 @@
 * { box-sizing: border-box; }
 html, body { margin: 0; padding: 0; }
 html { height: 100%; -webkit-text-size-adjust: 100%; }
+/* position:fixed (not height:100%) so iOS can never leave the layout
+   viewport scrolled after the keyboard opens — the "app shifted up with a
+   black band at the bottom" bug */
 body {
-  height: 100%; display: flex; flex-direction: column; overflow: hidden;
+  position: fixed; inset: 0; display: flex; flex-direction: column; overflow: hidden;
   font: 16px/1.45 -apple-system, system-ui, 'Segoe UI', sans-serif;
   background: var(--bg); color: var(--text);
 }
@@ -63,6 +66,7 @@ button, #tabbar { -webkit-user-select: none; user-select: none; }
 }
 #tabbar button.active { color: var(--accent); }
 body.onboarding #tabbar { display: none; }
+body.sheet-open #tabbar { display: none; } /* sheet needs the full height */
 
 /* cards & layout */
 .card {
@@ -172,7 +176,8 @@ button.loading::after {
   position: fixed; left: 0; right: 0; bottom: 0; z-index: 31; max-height: 88dvh; overflow-y: auto;
   -webkit-overflow-scrolling: touch; overscroll-behavior: contain;
   background: var(--surface); border-radius: 22px 22px 0 0;
-  padding: 16px 14px calc(20px + env(safe-area-inset-bottom));
+  /* --kb = on-screen keyboard overlap, set by the viewport guard in app.js */
+  padding: 16px 14px calc(28px + env(safe-area-inset-bottom) + var(--kb, 0px));
   max-width: 480px; margin: 0 auto;
 }
 .result { display: flex; justify-content: space-between; gap: 8px; padding: 10px 0; border-top: 1px solid var(--line); font-size: .9rem; align-items: center; }
