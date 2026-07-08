@@ -150,3 +150,72 @@ export function trFoodToEn(query) {
   if (words.length > 1 && words.every(Boolean)) return words.join(' ');
   return null;
 }
+
+/* ---- reverse direction: display English food names in Turkish ---- */
+
+// USDA-label vocabulary that has no Turkish→English counterpart above.
+const EN_EXTRA = {
+  'raw': 'çiğ', 'cooked': 'pişmiş', 'roasted': 'kavrulmuş', 'grilled': 'ızgara',
+  'boiled': 'haşlanmış', 'fried': 'kızarmış', 'baked': 'fırında', 'steamed': 'buğulama',
+  'broiled': 'ızgara', 'braised': 'kısık ateşte pişmiş', 'smoked': 'füme',
+  'breast': 'göğüs', 'thigh': 'but', 'wing': 'kanat', 'leg': 'but', 'drumstick': 'baget',
+  'ground': 'kıyma', 'lean': 'yağsız', 'skinless': 'derisiz', 'boneless': 'kemiksiz',
+  'skin': 'derili', 'bone': 'kemik', 'broiler': 'piliç', 'broilers': 'piliç',
+  'fryer': 'piliç', 'fryers': 'piliç', 'roaster': 'piliç',
+  'canned': 'konserve', 'dehydrated': 'kurutulmuş', 'instant': 'hazır',
+  'unsalted': 'tuzsuz', 'salted': 'tuzlu', 'sweetened': 'şekerli', 'unsweetened': 'şekersiz',
+  'reduced': 'azaltılmış', 'sodium': 'sodyum', 'lowfat': 'az yağlı', 'organic': 'organik',
+  'plain': 'sade', 'natural': 'doğal', 'enriched': 'zenginleştirilmiş',
+  'juice': 'suyu', 'drink': 'içecek', 'beverage': 'içecek', 'powder': 'toz',
+  'slices': 'dilim', 'sliced': 'dilimlenmiş', 'diced': 'doğranmış', 'chopped': 'kıyılmış',
+  'mixed': 'karışık', 'mix': 'karışım', 'spread': 'sürülebilir', 'sauce': 'sos',
+  'meatless': 'etsiz', 'without': 'olmadan', 'with': 'ile', 'and': 've', 'or': 'veya',
+  'all': 'tüm', 'varieties': 'çeşitler', 'commercial': 'ticari', 'homemade': 'ev yapımı',
+  'medium': 'orta', 'large': 'büyük', 'small': 'küçük', 'extra': 'ekstra',
+  'white': 'beyaz', 'brown': 'esmer', 'red': 'kırmızı', 'green': 'yeşil', 'black': 'siyah',
+  'yellow': 'sarı', 'dark': 'koyu', 'light': 'açık', 'whole': 'tam', 'wheat': 'buğday',
+  'grain': 'tahıl', 'seed': 'çekirdek', 'seeds': 'çekirdek', 'nut': 'kuruyemiş',
+  'nuts': 'kuruyemiş', 'style': 'usulü', 'fresh': 'taze', 'frozen': 'dondurulmuş',
+  'dried': 'kuru', 'dry': 'kuru', 'fat': 'yağ', 'free': 'içermez', 'sugar': 'şeker',
+  'protein': 'protein', 'bar': 'bar', 'shake': 'içecek', 'sandwich': 'sandviç',
+  'breakfast': 'kahvaltılık', 'cereal': 'gevrek', 'cereals': 'gevrek',
+  'pudding': 'puding', 'cream': 'krema', 'iced': 'buzlu', 'hot': 'sıcak', 'cold': 'soğuk',
+};
+
+// English → Turkish map inverted from DICT (first/accented spelling wins),
+// plus the extra USDA vocabulary. Multiword phrases replace first.
+let EN2TR = null;
+let EN_PHRASES = null;
+function buildReverse() {
+  EN2TR = { ...EN_EXTRA };
+  for (const [tr, en] of Object.entries(DICT)) {
+    if (!(en in EN2TR)) EN2TR[en] = tr;
+  }
+  EN_PHRASES = Object.keys(EN2TR).filter((k) => k.includes(' '))
+    .sort((a, b) => b.length - a.length);
+}
+
+const singular = (w) => {
+  if (w.endsWith('ies') && w.length > 4) return `${w.slice(0, -3)}y`;
+  if (w.endsWith('es') && w.length > 4 && EN2TR[w.slice(0, -2)]) return w.slice(0, -2);
+  if (w.endsWith('s') && w.length > 3) return w.slice(0, -1);
+  return w;
+};
+
+// Best-effort word/phrase translation of an English food label. Unknown
+// words (brands, varieties) pass through unchanged.
+export function enFoodToTr(label) {
+  const s = String(label || '');
+  if (!s) return s;
+  if (!EN2TR) buildReverse();
+  let low = s.toLowerCase();
+  for (const p of EN_PHRASES) {
+    low = low.replace(new RegExp(`\\b${p}\\b`, 'g'), EN2TR[p]);
+  }
+  const out = low.replace(/[a-z]+/g, (w) => {
+    if (EN2TR[w]) return EN2TR[w];
+    const sing = singular(w);
+    return EN2TR[sing] ?? w;
+  });
+  return out.charAt(0).toLocaleUpperCase('tr') + out.slice(1);
+}

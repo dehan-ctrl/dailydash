@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { trFoodToEn } from '../js/food/tr-foods.js';
+import { trFoodToEn, enFoodToTr } from '../js/food/tr-foods.js';
 
 test('translates single common foods', () => {
   assert.equal(trFoodToEn('tavuk'), 'chicken');
@@ -26,4 +26,20 @@ test('is case-insensitive with Turkish letters (İ→i, I→ı)', () => {
   assert.equal(trFoodToEn('TAVUK'), 'chicken');
   assert.equal(trFoodToEn('IZGARA TAVUK'), 'grilled chicken');
   assert.equal(trFoodToEn('İncir'), 'fig');
+});
+
+test('enFoodToTr renders English result names in Turkish', () => {
+  assert.equal(enFoodToTr('Bananas, raw'), 'Muz, çiğ');
+  assert.equal(enFoodToTr('Chicken breast, grilled'), 'Tavuk göğsü, ızgara');
+  assert.equal(enFoodToTr('Egg, whole, boiled'), 'Yumurta, tam, haşlanmış');
+});
+
+test('enFoodToTr passes unknown words (brands) through unchanged', () => {
+  assert.equal(enFoodToTr('Zwixxle bar'), 'Zwixxle bar');
+  assert.equal(enFoodToTr(''), '');
+});
+
+test('enFoodToTr handles plurals and uppercase', () => {
+  assert.equal(enFoodToTr('EGGS'), 'Yumurtalar');
+  assert.equal(enFoodToTr('Tomatoes, canned'), 'Domates, konserve');
 });

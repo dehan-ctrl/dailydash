@@ -120,7 +120,7 @@ export const TR = {
   'Serving macros are entered directly for {label}.': '{label} için makrolar doğrudan girilmiştir.',
   '‹ Cancel': '‹ Vazgeç', 'Edit food': 'Yiyeceği düzenle',
   'Barcode (optional)': 'Barkod (isteğe bağlı)', 'Scan or type barcode': 'Barkodu tarayın veya yazın',
-  'Protein (g)': 'Protein (g)', 'Carbs (g)': 'Karbonhidrat (g)', 'Fat (g)': 'Yağ (g)',
+  'Protein (g)': 'Protein (g)', 'Carbs (g)': 'Karb. (g)', 'Fat (g)': 'Yağ (g)',
   '100 g is calculated from {label} ({grams} g).': '100 g değeri {label} ({grams} g) porsiyonundan hesaplanır.',
   'Servings': 'Porsiyonlar', '100 g (always available)': '100 g (her zaman var)',
   'e.g. 1 cup': 'örn. 1 kase',
@@ -209,7 +209,7 @@ export const TR = {
 
   /* settings */
   'Users': 'Kullanıcılar', 'Current user': 'Mevcut kullanıcı',
-  'Add user': 'Kullanıcı ekle', 'Rename': 'Yeniden adlandır', 'Delete': 'Sil',
+  'Add user': 'Kullanıcı ekle', 'Rename': 'Ad değiştir', 'Delete': 'Sil',
   'Each user has separate logs, targets, foods, recipes, recents, and favorites on this device.':
     'Her kullanıcının bu cihazda ayrı kayıtları, hedefleri, yiyecekleri, tarifleri, son kullanılanları ve favorileri vardır.',
   'Coach settings': 'Koç ayarları',

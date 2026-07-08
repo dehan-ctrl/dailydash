@@ -23,12 +23,16 @@
 
 * { box-sizing: border-box; }
 html, body { margin: 0; padding: 0; }
-html { height: 100%; -webkit-text-size-adjust: 100%; }
+/* html gets the app background so any area iOS leaves unpainted (standalone
+   letterboxing, keyboard transitions) matches the app instead of black */
+html { height: 100%; -webkit-text-size-adjust: 100%; background: var(--bg); }
 /* position:fixed (not height:100%) so iOS can never leave the layout
-   viewport scrolled after the keyboard opens — the "app shifted up with a
-   black band at the bottom" bug */
+   viewport scrolled after the keyboard opens; 100dvh tracks the dynamic
+   viewport so the body re-expands after the keyboard closes */
 body {
-  position: fixed; inset: 0; display: flex; flex-direction: column; overflow: hidden;
+  position: fixed; top: 0; left: 0; right: 0;
+  height: 100vh; height: 100dvh;
+  display: flex; flex-direction: column; overflow: hidden;
   font: 16px/1.45 -apple-system, system-ui, 'Segoe UI', sans-serif;
   background: var(--bg); color: var(--text);
 }
@@ -75,6 +79,9 @@ body.onboarding #tabbar { display: none; }
 }
 .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
 .row > * { flex: 1; min-width: 0; }
+/* pills never squeeze below their text — they wrap to the next line instead
+   (Turkish labels are longer than English ones) */
+.row > button.ghost { flex: 1 0 auto; min-width: max-content; }
 .spread { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
 .spread > * { min-width: 0; }
 .muted { color: var(--muted); font-size: .85rem; }

@@ -7,7 +7,12 @@ import { lookupBarcode, searchFoodsPage } from '../food/off.js';
 import { searchUsdaPage, hydrateUsdaFood } from '../food/usda.js';
 import { startScan, stopScan, scanErrorMessage } from '../food/barcode.js';
 import { turkishQueryToEnglish } from '../food/translate.js';
+import { enFoodToTr } from '../food/tr-foods.js';
 import { t, getLang, locale, langChip, wireLangChip } from '../i18n.js';
+
+// Food names come from USDA/OFF in English; show them in Turkish when the
+// UI is Turkish (stored data stays canonical English).
+const tFood = (label) => (getLang() === 'tr' ? enFoodToTr(label) : label);
 
 const MEALS = ['Breakfast', 'Lunch', 'Dinner', 'Snacks'];
 let date = dstr(), root, ctx, settings, mode = 'consumed', sheet = null;
@@ -108,7 +113,7 @@ function entryPortionLabel(e) {
 }
 
 function entryMain(e, meal, index) {
-  const content = `<span>${e.label}</span><small>${entryPortionLabel(e)} · P ${e.p} C ${e.c} F ${e.f}</small>`;
+  const content = `<span>${tFood(e.label)}</span><small>${entryPortionLabel(e)} · P ${e.p} C ${e.c} F ${e.f}</small>`;
   return canEditEntry(e)
     ? `<button class="entryopen" data-entry="${meal}:${index}">${content}</button>`
     : `<div class="entrytext">${content}</div>`;
@@ -267,7 +272,7 @@ function defaultPortion(f) {
 
 function foodRow(f, i, favs = {}) {
   return `<button class="foodrow" data-open="${i}">
-    <span class="frname">${f.label}${f.brand ? ` <span class="muted">(${f.brand})</span>` : ''}</span>
+    <span class="frname">${tFood(f.label)}${f.brand ? ` <span class="muted">(${f.brand})</span>` : ''}</span>
     <small class="muted">${favs[f.id] || f.fav ? '★ ' : ''}${defaultPortion(f)}</small>
   </button>`;
 }
@@ -522,7 +527,7 @@ function renderFoodPage() {
       ${mealSelect()}
       <button class="ghost" id="pedit">${t('Edit')}</button>
     </div>
-    <h1 style="margin:14px 0 2px">${food.label}</h1>
+    <h1 style="margin:14px 0 2px">${tFood(food.label)}</h1>
     ${food.brand ? `<p class="muted" style="margin:0 0 10px">${food.brand}</p>` : '<div style="height:10px"></div>'}
     <div class="macrostrip card">
       <div><b id="pkcal">${m.kcal}</b><span>${t('Cal')}</span></div>
@@ -727,11 +732,11 @@ function renderRecipeTab(recipes) {
     <label>${t('Servings it makes')}</label><input id="rserv" type="number" value="${d.servings}">
     <div class="row" style="margin-top:8px"><input id="rq" placeholder="${t('Search ingredient…')}">
       <button class="ghost" id="rgo">${t('Search')}</button></div>
-    ${(d.results || []).map((f, i) => `<div class="result"><div>${f.label}<small class="muted"> ${t('{kcal} kcal/100g', { kcal: Math.round(f.per100g.kcal) })}</small></div>
+    ${(d.results || []).map((f, i) => `<div class="result"><div>${tFood(f.label)}<small class="muted"> ${t('{kcal} kcal/100g', { kcal: Math.round(f.per100g.kcal) })}</small></div>
       <input type="number" placeholder="g" data-ring-g="${i}" style="width:70px">
       <button class="ghost" data-ringadd="${i}">${t('Add')}</button></div>`).join('')}
     ${d.ingredients.length ? `<h3 style="margin-top:10px">${t('Ingredients')}</h3>` : ''}
-    ${d.ingredients.map((ing, i) => `<div class="entry"><div>${ing.label} <small>${ing.grams} g</small></div>
+    ${d.ingredients.map((ing, i) => `<div class="entry"><div>${tFood(ing.label)} <small>${ing.grams} g</small></div>
       <button class="del" data-ringdel="${i}">×</button></div>`).join('')}
     <button class="ghost" id="rsave" style="margin-top:10px">${t('Save recipe')}</button>`;
 }
