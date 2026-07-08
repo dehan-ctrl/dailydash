@@ -1,8 +1,17 @@
 import { defaultPlan, editDay, weeklyTotal, dayMacros } from '../engine/planner.js';
 import { kcalFloor } from '../engine/prescribe.js';
 import { latestTargets, activeTargets } from '../engine/targets.js';
+import { t } from '../i18n.js';
 
 const DOW = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+
+// Planner engine messages are parametric English; translate at display edge.
+function tPlannerMsg(m) {
+  if (!m) return m;
+  const clamped = m.match(/^Clamped to (\d+) kcal — no other day can go below (\d+) kcal\.$/);
+  if (clamped) return t('Clamped to {kcal} kcal — no other day can go below {floor} kcal.', { kcal: clamped[1], floor: clamped[2] });
+  return t(m);
+}
 let root, ctx, msg = '';
 
 export async function mount(el, c) {
@@ -23,22 +32,22 @@ async function render() {
   const { settings, targets, plan } = await load();
   const total = weeklyTotal(plan.days), budget = targets.kcal * 7;
   root.innerHTML = `
-  <div class="backbar"><button class="ghost" id="backdiary">‹ Diary</button><h2>Calorie planner</h2></div>
-  <div class="card"><div class="spread"><span>Plan high and low days</span>
-    <label style="margin:0"><input type="checkbox" id="en" ${plan.enabled ? 'checked' : ''}> On</label></div>
-  <p class="muted">Shift calories between days — the weekly total stays ${budget} kcal. Lock days to pin them.</p></div>
+  <div class="backbar"><button class="ghost" id="backdiary">${t('‹ Diary')}</button><h2>${t('Calorie planner')}</h2></div>
+  <div class="card"><div class="spread"><span>${t('Plan high and low days')}</span>
+    <label style="margin:0"><input type="checkbox" id="en" ${plan.enabled ? 'checked' : ''}> ${t('On')}</label></div>
+  <p class="muted">${t('Shift calories between days — the weekly total stays {n} kcal. Lock days to pin them.', { n: budget })}</p></div>
   <div class="card" ${plan.enabled ? '' : 'style="opacity:.45;pointer-events:none"'}>
     ${plan.days.map((d, i) => {
       const m = dayMacros(d.kcal, targets);
-      return `<div class="planday"><b>${DOW[i]}</b>
+      return `<div class="planday"><b>${t(DOW[i])}</b>
         <span class="muted">P ${m.proteinG} · C ${m.carbG} · F ${m.fatG}</span>
         <input type="number" value="${d.kcal}" data-day="${i}" ${d.locked ? 'disabled' : ''}>
         <button class="lock ${d.locked ? 'on' : ''}" data-lock="${i}">${d.locked ? '🔒' : '🔓'}</button></div>`;
     }).join('')}
-    <div class="spread" style="margin-top:8px"><span class="muted">Weekly total</span>
+    <div class="spread" style="margin-top:8px"><span class="muted">${t('Weekly total')}</span>
       <b>${total} / ${budget} kcal ${total === budget ? '✓' : '⚠️'}</b></div>
-    ${msg ? `<p class="msg">${msg}</p>` : ''}
-    <button class="ghost" id="even" style="margin-top:8px">Even out week</button>
+    ${msg ? `<p class="msg">${tPlannerMsg(msg)}</p>` : ''}
+    <button class="ghost" id="even" style="margin-top:8px">${t('Even out week')}</button>
   </div>`;
   wire(plan, targets, settings);
 }

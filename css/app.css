@@ -66,7 +66,6 @@ button, #tabbar { -webkit-user-select: none; user-select: none; }
 }
 #tabbar button.active { color: var(--accent); }
 body.onboarding #tabbar { display: none; }
-body.sheet-open #tabbar { display: none; } /* sheet needs the full height */
 
 /* cards & layout */
 .card {
@@ -170,16 +169,52 @@ button.loading::after {
 .entryopen:active span { text-decoration-color: var(--accent); }
 .entry .del { background: none; border: 0; color: var(--danger); font-size: 1rem; padding: 0 4px; min-height: 32px; }
 
-/* bottom sheet */
-.sheet-back { position: fixed; inset: 0; background: rgb(9 20 34 / .45); z-index: 30; }
-.sheet {
-  position: fixed; left: 0; right: 0; bottom: 0; z-index: 31; max-height: 88dvh; overflow-y: auto;
-  -webkit-overflow-scrolling: touch; overscroll-behavior: contain;
-  background: var(--surface); border-radius: 22px 22px 0 0;
-  /* --kb = on-screen keyboard overlap, set by the viewport guard in app.js */
-  padding: 16px 14px calc(28px + env(safe-area-inset-bottom) + var(--kb, 0px));
-  max-width: 480px; margin: 0 auto;
+/* full-page food picker */
+.picker { padding-bottom: var(--kb, 0px); } /* --kb = keyboard overlap (app.js) */
+.pickerhead { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
+.pickerhead .iconbtn { padding: 8px 12px; font-size: 1.05rem; flex: none; }
+.mealpick {
+  flex: none; width: auto; font-weight: 700; border: 0; background: none;
+  padding: 8px 4px; color: var(--text);
 }
+.searchbar {
+  display: flex; align-items: center; gap: 8px; min-width: 0;
+  background: var(--surface2); border: 1px solid var(--line); border-radius: 999px;
+  padding: 4px 6px 4px 14px;
+}
+.searchbar span { color: var(--muted); flex: none; }
+.searchbar input { border: 0; background: none; padding: 8px 0; flex: 1; min-width: 0; }
+.searchbar input:focus { outline: none; }
+.scanicon {
+  flex: none; border: 0; background: none; color: var(--muted);
+  font-size: 1.2rem; padding: 6px 10px; min-height: 34px;
+}
+.pickertabs { display: flex; margin: 4px 0 10px; border-bottom: 1px solid var(--line); }
+.pickertabs button {
+  flex: 1; background: none; border: 0; padding: 10px 0; font: inherit; font-weight: 600;
+  color: var(--muted); border-bottom: 2px solid transparent; margin-bottom: -1px;
+}
+.pickertabs button.on { color: var(--text); border-bottom-color: var(--text); }
+.listhead { color: var(--muted); font-size: .85rem; margin: 12px 0 8px; }
+.foodlist { border-radius: var(--radius); overflow: hidden; background: var(--surface); border: 1px solid var(--line); }
+.foodrow {
+  display: block; width: 100%; text-align: left; background: none; border: 0;
+  border-top: 1px solid var(--line); padding: 12px 14px; font: inherit; color: var(--text);
+}
+.foodrow:first-child { border-top: 0; }
+.foodrow .frname { display: block; font-weight: 600; margin-bottom: 2px; }
+.foodrow small { display: block; }
+.searchempty { text-align: center; padding: 30px 20px; }
+.macrostrip { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; text-align: center; padding: 14px 8px; margin: 0; }
+.macrostrip b { display: block; font-size: 1.15rem; font-variant-numeric: tabular-nums; }
+.macrostrip span { font-size: .72rem; color: var(--muted); }
+.macrostrip .mp::before, .macrostrip .mc::before, .macrostrip .mf::before {
+  content: ''; display: inline-block; width: 7px; height: 12px; border-radius: 4px; margin-right: 5px;
+}
+.macrostrip .mp::before { background: var(--protein); }
+.macrostrip .mc::before { background: var(--carbs); }
+.macrostrip .mf::before { background: var(--fat); }
+.langchip { flex: none; padding: 8px 11px; font-size: .78rem; font-weight: 700; }
 .result { display: flex; justify-content: space-between; gap: 8px; padding: 10px 0; border-top: 1px solid var(--line); font-size: .9rem; align-items: center; }
 .result > div:first-child, .result > button.open { flex: 1; min-width: 0; }
 .result button, .result input { flex: none; }

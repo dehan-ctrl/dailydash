@@ -1,5 +1,6 @@
 import * as db from './db.js';
 import { backupReminder, downloadBackup, DEFAULT_BACKUP_REMINDER_DAYS } from './backup.js';
+import { t } from './i18n.js';
 
 const TABS = [['diary', 'Diary'], ['coach', 'Coach'], ['me', 'Me'], ['settings', 'Settings']];
 let current = 'diary';
@@ -8,16 +9,18 @@ const ctx = { db, navigate, refresh: () => navigate(current) };
 export async function navigate(id) {
   current = id;
   const tab = ['plan'].includes(id) ? 'diary' : id; // sub-screens highlight their parent tab
-  document.querySelectorAll('#tabbar button')
-    .forEach((b) => b.classList.toggle('active', b.dataset.id === tab));
+  document.querySelectorAll('#tabbar button').forEach((b) => {
+    b.classList.toggle('active', b.dataset.id === tab);
+    b.textContent = t(TABS.find(([tid]) => tid === b.dataset.id)?.[1] ?? b.dataset.id);
+  });
   const main = document.getElementById('view');
   main.innerHTML = '';
   main.scrollTop = 0;
-  document.body.classList.remove('sheet-open');
+  document.body.classList.remove('picker-open');
   try {
     (await import(`./views/${id}.js`)).mount(main, ctx);
   } catch (e) {
-    main.innerHTML = `<div class="card"><h2>${id}</h2><p>Something went wrong loading this screen.</p></div>`;
+    main.innerHTML = `<div class="card"><h2>${id}</h2><p>${t('Something went wrong loading this screen.')}</p></div>`;
     console.error(e);
   }
 }
@@ -47,7 +50,7 @@ function setupPullToRefresh(view) {
   const THRESHOLD = 72;
   const ptr = document.createElement('div');
   ptr.id = 'ptr';
-  ptr.innerHTML = '<i></i><span>Up to date ✓</span>';
+  ptr.innerHTML = '<i></i><span></span>';
   document.body.appendChild(ptr);
   const ring = ptr.querySelector('i');
   let startY = 0, pull = 0, tracking = false, busy = false;
@@ -61,7 +64,9 @@ function setupPullToRefresh(view) {
   };
 
   view.addEventListener('touchstart', (e) => {
-    tracking = !busy && view.scrollTop <= 0 && !document.body.classList.contains('onboarding');
+    tracking = !busy && view.scrollTop <= 0
+      && !document.body.classList.contains('onboarding')
+      && !document.body.classList.contains('picker-open'); // don't eject the food picker
     startY = e.touches[0].clientY;
     pull = 0;
   }, { passive: true });
@@ -93,6 +98,7 @@ function setupPullToRefresh(view) {
     // keep the spinner up long enough to read as "something happened"
     await new Promise((r) => setTimeout(r, Math.max(0, 650 - (Date.now() - t0))));
     ptr.classList.remove('refreshing');
+    ptr.querySelector('span').textContent = `${t('Up to date')} ✓`;
     ptr.classList.add('done');
     setTimeout(reset, 900);
   };
@@ -135,7 +141,9 @@ async function boot() {
       const b = document.createElement('div');
       b.className = 'banner spread';
       b.style.margin = `calc(14px + env(safe-area-inset-top)) 14px 0`;
-      b.innerHTML = `It's been ${reminder.label} since your last backup <button class="ghost" id="nudge">Export now</button>`;
+      const label = /^\d+ days$/.test(reminder.label)
+        ? t('{n} days', { n: parseInt(reminder.label, 10) }) : t(reminder.label);
+      b.innerHTML = `${t("It's been {label} since your last backup", { label })} <button class="ghost" id="nudge">${t('Export now')}</button>`;
       document.getElementById('view').before(b);
       b.querySelector('#nudge').onclick = async () => { await downloadBackup(db); b.remove(); };
     }

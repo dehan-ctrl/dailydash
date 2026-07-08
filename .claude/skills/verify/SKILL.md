@@ -21,18 +21,28 @@ npm to this repo — install `playwright-core` in the session scratchpad).
 
 ## Flows worth driving
 
-- **Diary add sheet**: `.meal button.fab` → tabs via `[data-tab="custom"]` etc.
-- **Custom food**: `#cname/#cslabel/#csgrams/#ck/#cp/#cc/#cf` → `#csave`;
-  `#cmacros` label must flip to "Macros for … (N g)" when grams entered;
-  per100g in IndexedDB (`macrocoach` db, `foods` store) must be scaled from
-  the serving.
-- **Portion detail**: open `.result button.open`; serving chips `[data-serv]`,
-  preview values `#pkcal/#pp/#pc/#pf`, confirm `#paddconfirm`.
+- **Food picker** (full page): `.meal button.fab` → `.picker`; tabs
+  `[data-tab="recent"|"mine"|"recipe"]`, meal dropdown `#mealpick`,
+  back `#pickerback`.
+- **Custom food**: My Foods tab → `#newfoodbtn` → `#cname/#cslabel/#csgrams/
+  #ck/#cp/#cc/#cf` → `#csave`; `#cmacros` label must flip to "Macros for …
+  (N g)" when grams entered; per100g in IndexedDB (`macrocoach` db, `foods`
+  store) must be scaled from the serving. Logged customs must appear in the
+  Recent tab (lastUsed stamp).
+- **Live search**: focus `.searchbar input` → search mode + `#cancelsearch`;
+  typing ≥2 chars shows "Recent & My foods (n)" locals instantly, online
+  results ~600ms after pause. Input focus must survive re-renders.
+- **Food page**: tap `.foodrow` → macro strip `#pkcal/#pp/#pc/#pf`, serving
+  `<select id="servsel">`, qty `#pqty`, confirm `#paddconfirm`; `#mealpick`
+  changes/moves the target meal.
+- **Turkish**: `#langchip` toggles TR/EN everywhere incl. tab bar; with TR
+  active a search like "tavuk" must hit USDA as "chicken" (watch requests to
+  nal.usda.gov). Coverage test: test/i18n-coverage.test.mjs.
 - **Pull-to-refresh**: CDP `Input.dispatchTouchEvent` drag down ~220px from
   y≈250 at scrollTop 0; `#ptr` shows, release → class `refreshing` then
-  `done` ("Up to date ✓"). Short pull (<72px threshold-equivalent) must not
-  trigger.
-- **Scanner**: `button#scan` in the search tab → `video.scanner` playing.
+  `done` ("Up to date ✓"). Short pull must not trigger; disabled while
+  `.picker` is open (body.picker-open).
+- **Scanner**: `#scan` icon in the search bar → `video.scanner` playing.
 
 ## Gotchas
 

@@ -13,6 +13,10 @@ A personal diet-coach PWA (Carbon-style adaptive macro coaching). Spec:
   `js/units.js`. Dates are local `YYYY-MM-DD` strings via `js/util.js`.
 - `js/engine/*` and food normalizers stay pure (no DOM/DB/network/Date.now).
 - Calorie floor: 1200 kcal (female) / 1500 kcal (male), everywhere.
+- i18n: every user-facing string goes through `t()` from `js/i18n.js` with the
+  English string as the key, and gets a Turkish entry in the same file
+  (test/i18n-coverage.test.mjs enforces this). Engines keep returning English;
+  translate at the display edge (`tExplain` for coach sentences).
 
 ## Commands
 - Tests: `node --test` (auto-discovers test/*.test.mjs)

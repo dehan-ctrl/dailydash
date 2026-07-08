@@ -4,6 +4,7 @@ import { leanMassKg } from '../engine/prescribe.js';
 import { lineChart } from '../charts.js';
 import { dayTargetFor } from './diary.js';
 import { fmtWeight, lbToKg } from '../units.js';
+import { t, langChip, wireLangChip } from '../i18n.js';
 
 let root, ctx;
 
@@ -26,7 +27,7 @@ async function render() {
   const today = dstr();
 
   /* charts */
-  let weightChart = '<p class="muted">Weigh in to see your trend.</p>';
+  let weightChart = `<p class="muted">${t('Weigh in to see your trend.')}</p>`;
   if (trend.length) {
     const d0 = trend[0].date;
     weightChart = lineChart({
@@ -46,39 +47,40 @@ async function render() {
     if (log && dayKcal(log) > 0) bars.push({ x: 13 - i, y: dayKcal(log), cls: dayKcal(log) > t.kcal * 1.05 ? 'over' : '' });
   }
   const kcalChart = lineChart({ bars, series: [{ points: targetPts, cls: 'chart-line2' }],
-    xTicks: [{ x: 0, label: addDays(today, -13).slice(5) }, { x: 13, label: 'today' }] });
+    xTicks: [{ x: 0, label: addDays(today, -13).slice(5) }, { x: 13, label: t('today') }] });
   const cks = [...checkins].sort((a, b) => (a.date < b.date ? -1 : 1)).filter((c) => c.tdee);
   const tdeeChart = cks.length >= 2 ? lineChart({
     series: [{ points: cks.map((c, i) => ({ x: i, y: c.tdee })), cls: 'chart-line', dots: true }],
     xTicks: [{ x: 0, label: cks[0].date.slice(5) }, { x: cks.length - 1, label: cks.at(-1).date.slice(5) }],
-  }) : '<p class="muted">Appears after two check-ins.</p>';
+  }) : `<p class="muted">${t('Appears after two check-ins.')}</p>`;
 
   const adh = [];
   for (let wk = 3; wk >= 0; wk--) {
     const end = addDays(today, -7 * wk), start = addDays(end, -6);
     const n = logs.filter((l) => l.date >= start && l.date <= end && l.complete).length;
-    adh.push(`<div class="spread"><span class="muted">${start.slice(5)} – ${end.slice(5)}</span><b>${n}/7 days</b></div>`);
+    adh.push(`<div class="spread"><span class="muted">${start.slice(5)} – ${end.slice(5)}</span><b>${t('{n}/7 days', { n })}</b></div>`);
   }
 
   root.innerHTML = `
-  <div class="hero"><div class="avatar">ME</div></div>
-  <div class="card"><h2>Body values</h2>
-    <div class="listrow"><span>Weight</span><b>${latest ? fmtWeight(latest.weightKg, settings.units) : '—'}</b></div>
+  <div class="hero"><div class="spread"><span style="flex:0 0 34px"></span><div class="avatar" style="margin:4px auto 10px">ME</div>${langChip()}</div></div>
+  <div class="card"><h2>${t('Body values')}</h2>
+    <div class="listrow"><span>${t('Weight')}</span><b>${latest ? fmtWeight(latest.weightKg, settings.units) : '—'}</b></div>
     <div class="row" style="padding:4px 0 8px">
-      <input type="number" step="0.1" id="wt" placeholder="Log today's weight (${imp ? 'lb' : 'kg'})">
-      <button class="ghost" id="savewt">Save</button></div>
-    <div class="listrow"><span>Body fat</span><b>${latestBf != null ? latestBf + ' %' : '—'}</b></div>
+      <input type="number" step="0.1" id="wt" placeholder="${t("Log today's weight ({u})", { u: imp ? 'lb' : 'kg' })}">
+      <button class="ghost" id="savewt">${t('Save')}</button></div>
+    <div class="listrow"><span>${t('Body fat')}</span><b>${latestBf != null ? latestBf + ' %' : '—'}</b></div>
     <div class="row" style="padding:4px 0 8px">
-      <input type="number" step="0.1" id="bf" placeholder="Log body fat %">
-      <button class="ghost" id="savebf">Save</button></div>
-    <div class="listrow"><span>Lean body mass</span><b>${lbm ? fmtWeight(lbm, settings.units) : 'add body fat %'}</b></div>
-    <div class="listrow"><span>Maintenance calories</span><b>${tdee ? `${tdee} kcal` : 'learns after check-ins'}</b></div>
+      <input type="number" step="0.1" id="bf" placeholder="${t('Log body fat %')}">
+      <button class="ghost" id="savebf">${t('Save')}</button></div>
+    <div class="listrow"><span>${t('Lean body mass')}</span><b>${lbm ? fmtWeight(lbm, settings.units) : t('add body fat %')}</b></div>
+    <div class="listrow"><span>${t('Maintenance calories')}</span><b>${tdee ? `${tdee} kcal` : t('learns after check-ins')}</b></div>
   </div>
-  <div class="card"><h2>Weight trend</h2>${weightChart}</div>
-  <div class="card"><h2>Calories vs target</h2>${kcalChart}</div>
-  <div class="card"><h2>Logging adherence</h2>${adh.join('')}</div>
-  <div class="card"><h2>Maintenance over time</h2>${tdeeChart}</div>`;
+  <div class="card"><h2>${t('Weight trend')}</h2>${weightChart}</div>
+  <div class="card"><h2>${t('Calories vs target')}</h2>${kcalChart}</div>
+  <div class="card"><h2>${t('Logging adherence')}</h2>${adh.join('')}</div>
+  <div class="card"><h2>${t('Maintenance over time')}</h2>${tdeeChart}</div>`;
 
+  wireLangChip(root, () => ctx.refresh());
   root.querySelector('#savewt').onclick = async () => {
     const v = +root.querySelector('#wt').value;
     if (!v) return;

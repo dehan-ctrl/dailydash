@@ -6,10 +6,13 @@ import { buildCustomFood, customFoodForBarcode, normalizeBarcode } from '../food
 import { lookupBarcode, searchFoodsPage } from '../food/off.js';
 import { searchUsdaPage, hydrateUsdaFood } from '../food/usda.js';
 import { startScan, stopScan, scanErrorMessage } from '../food/barcode.js';
+import { turkishQueryToEnglish } from '../food/translate.js';
+import { t, getLang, locale, langChip, wireLangChip } from '../i18n.js';
 
 const MEALS = ['Breakfast', 'Lunch', 'Dinner', 'Snacks'];
 let date = dstr(), root, ctx, settings, mode = 'consumed', sheet = null;
-// sheet = {meal, tab, q, searchPage, hasMore, results, picked:{food, servingIdx, qty}|null, editEntry, editing, recipeDraft, busy, msg}
+// sheet = {meal, tab, q, searchPage, hasMore, results, searching, locals,
+//          picked:{food, servingIdx, qty}|null, editEntry, editing, subform, recipeDraft, msg, scanning}
 
 // The targets in force for a given date: date-versioned coach prescription,
 // overridden by custom targets when selected, shaped by the planner's weekday.
@@ -28,13 +31,13 @@ const sumEntries = (entries) => entries.reduce(
   { kcal: 0, p: 0, c: 0, f: 0 });
 
 function fmtDay(d) {
-  if (d === dstr()) return `Today, ${niceDate(d)}`;
-  if (d === addDays(dstr(), -1)) return `Yesterday, ${niceDate(d)}`;
-  return new Date(d + 'T12:00:00').toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
+  if (d === dstr()) return t('Today, {date}', { date: niceDate(d) });
+  if (d === addDays(dstr(), -1)) return t('Yesterday, {date}', { date: niceDate(d) });
+  return new Date(d + 'T12:00:00').toLocaleDateString(locale(), { weekday: 'short', month: 'short', day: 'numeric' });
 }
-const niceDate = (d) => new Date(d + 'T12:00:00').toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+const niceDate = (d) => new Date(d + 'T12:00:00').toLocaleDateString(locale(), { month: 'short', day: 'numeric' });
 
-function ringsSvg(t, target) {
+function ringsSvg(tt, target) {
   const ring = (r, cls, used, total) => {
     const c = 2 * Math.PI * r;
     const pct = Math.min(total ? used / total : 0, 1);
@@ -43,65 +46,65 @@ function ringsSvg(t, target) {
         stroke-dasharray="${(pct * c).toFixed(1)} ${c.toFixed(1)}"/>`;
   };
   return `<div class="crings"><svg viewBox="0 0 108 108" role="img" aria-label="Macros">
-    ${ring(46, 'cr-p', t.p, target.proteinG)}${ring(34, 'cr-c', t.c, target.carbG)}${ring(22, 'cr-f', t.f, target.fatG)}
+    ${ring(46, 'cr-p', tt.p, target.proteinG)}${ring(34, 'cr-c', tt.c, target.carbG)}${ring(22, 'cr-f', tt.f, target.fatG)}
   </svg></div>`;
 }
 
-function summaryCard(t, target) {
+function summaryCard(tt, target) {
   const rem = (v, tot) => Math.max(0, Math.round(tot - v));
   const left = (v, tot) => (mode === 'consumed' ? Math.round(v) : rem(v, tot));
   return `<div class="seg" style="margin-bottom:12px">
-    <button data-mode="consumed" class="${mode === 'consumed' ? 'on' : ''}">Consumed</button>
-    <button data-mode="remaining" class="${mode === 'remaining' ? 'on' : ''}">Remaining</button>
+    <button data-mode="consumed" class="${mode === 'consumed' ? 'on' : ''}">${t('Consumed')}</button>
+    <button data-mode="remaining" class="${mode === 'remaining' ? 'on' : ''}">${t('Remaining')}</button>
   </div>
   <div class="card"><div class="sumgrid">
-    ${ringsSvg(t, target)}
+    ${ringsSvg(tt, target)}
     <div class="sumrows">
-      <div class="sumrow"><span><b style="font-weight:700">Cal</b></span><b>${left(t.kcal, target.kcal)}</b><span class="tgt">${target.kcal}</span></div>
-      <div class="sumrow"><span><i class="dot p"></i>Protein</span><b>${left(t.p, target.proteinG)}</b><span class="tgt">${target.proteinG}</span></div>
-      <div class="sumrow"><span><i class="dot c"></i>Carbs</span><b>${left(t.c, target.carbG)}</b><span class="tgt">${target.carbG}</span></div>
-      <div class="sumrow"><span><i class="dot f"></i>Fat</span><b>${left(t.f, target.fatG)}</b><span class="tgt">${target.fatG}</span></div>
+      <div class="sumrow"><span><b style="font-weight:700">${t('Cal')}</b></span><b>${left(tt.kcal, target.kcal)}</b><span class="tgt">${target.kcal}</span></div>
+      <div class="sumrow"><span><i class="dot p"></i>${t('Protein')}</span><b>${left(tt.p, target.proteinG)}</b><span class="tgt">${target.proteinG}</span></div>
+      <div class="sumrow"><span><i class="dot c"></i>${t('Carbs')}</span><b>${left(tt.c, target.carbG)}</b><span class="tgt">${target.carbG}</span></div>
+      <div class="sumrow"><span><i class="dot f"></i>${t('Fat')}</span><b>${left(tt.f, target.fatG)}</b><span class="tgt">${target.fatG}</span></div>
     </div>
   </div>
-  ${target.source === 'custom' ? '<p class="hint">Using your custom targets (Settings → Macro targets).</p>' : ''}
-  <div class="pillrow"><button class="pill" id="toplan">📊 Planner</button></div>
+  ${target.source === 'custom' ? `<p class="hint">${t('Using your custom targets (Settings → Macro targets).')}</p>` : ''}
+  <div class="pillrow"><button class="pill" id="toplan">${t('📊 Planner')}</button></div>
   </div>`;
 }
 
 async function render() {
+  document.body.classList.toggle('picker-open', !!sheet);
+  if (sheet) return renderPicker();
   const log = (await ctx.db.get('logs', date)) ?? blankLog();
   const target = await dayTargetFor(ctx.db, date);
-  const t = sumEntries(log.meals.flatMap((m) => m.entries));
+  const tt = sumEntries(log.meals.flatMap((m) => m.entries));
   root.innerHTML = `
   <div class="hero"><div class="spread">
     <button class="ghost" data-nav="-1">‹</button>
     <h2>${fmtDay(date)}</h2>
-    <button class="ghost" data-nav="1">›</button>
+    <div class="row" style="flex:none;gap:6px">
+      <button class="ghost" data-nav="1">›</button>${langChip()}</div>
   </div></div>
-  ${summaryCard(t, target)}
+  ${summaryCard(tt, target)}
   ${log.meals.map((m, mi) => {
     const ms = sumEntries(m.entries);
     return `<div class="card meal"><div class="spread"><div>
-      <h3 style="margin:0">${m.name}</h3>
-      <span class="mealsum">${Math.round(ms.kcal)} Cal, ${Math.round(ms.p)}p, ${Math.round(ms.c)}c, ${Math.round(ms.f)}f</span></div>
-      <button class="fab" data-add="${mi}" aria-label="Add to ${m.name}">+</button></div>
+      <h3 style="margin:0">${t(m.name)}</h3>
+      <span class="mealsum">${t('{kcal} Cal, {p}p, {c}c, {f}f', { kcal: Math.round(ms.kcal), p: Math.round(ms.p), c: Math.round(ms.c), f: Math.round(ms.f) })}</span></div>
+      <button class="fab" data-add="${mi}" aria-label="${t('Add to {meal}', { meal: t(m.name) })}">+</button></div>
       ${m.entries.map((e, ei) => `<div class="entry">
         ${entryMain(e, mi, ei)}
-        <div style="flex:none">${e.kcal} <button class="del" data-del="${mi}:${ei}" aria-label="Delete ${e.label}">×</button></div></div>`).join('')}
+        <div style="flex:none">${e.kcal} <button class="del" data-del="${mi}:${ei}" aria-label="${t('Delete {label}', { label: e.label })}">×</button></div></div>`).join('')}
     </div>`;
-  }).join('')}
-  <div id="sheetroot"></div>`;
-  document.body.classList.toggle('sheet-open', !!sheet);
+  }).join('')}`;
   wire(log);
-  if (sheet) renderSheet();
 }
 
 function entryPortionLabel(e) {
-  if (e.unit === 'x') return 'quick add';
+  if (e.unit === 'x') return t('quick add');
   if (e.servingLabel && e.grams > 0) return `${e.qty} × ${e.servingLabel}`;
-  if (e.servingLabel) return e.servingLabel;
-  if (e.unit === 'serving') return `${e.qty} serving`;
-  return e.grams > 0 ? `${e.grams} g` : 'portion';
+  if (e.servingLabel) return e.servingLabel === 'serving' ? `${e.qty} × ${t('serving')}` : e.servingLabel;
+  if (e.unit === 'serving') return t('{qty} serving', { qty: e.qty });
+  return e.grams > 0 ? `${e.grams} g` : t('portion');
 }
 
 function entryMain(e, meal, index) {
@@ -116,11 +119,12 @@ function canEditEntry(e) {
 }
 
 function wire(log) {
+  wireLangChip(root, () => ctx.refresh()); // refresh via navigate so the tab bar re-translates too
   root.querySelectorAll('[data-nav]').forEach((b) => (b.onclick = () => { date = addDays(date, +b.dataset.nav); sheet = null; render(); }));
   root.querySelectorAll('[data-mode]').forEach((b) => (b.onclick = () => { mode = b.dataset.mode; render(); }));
   root.querySelector('#toplan').onclick = () => ctx.navigate('plan');
   root.querySelectorAll('[data-add]').forEach((b) =>
-    (b.onclick = () => { sheet = { meal: +b.dataset.add, tab: 'search', q: '', results: [], picked: null, editEntry: null, editing: false, recipeDraft: null, msg: '' }; render(); }));
+    (b.onclick = () => { openPicker(+b.dataset.add); }));
   root.querySelectorAll('[data-entry]').forEach((b) => (b.onclick = async () => {
     const [mi, ei] = b.dataset.entry.split(':').map(Number);
     await openEntryEditor(log, mi, ei);
@@ -134,7 +138,16 @@ function wire(log) {
 
 async function save(log) { await ctx.db.put('logs', log); render(); }
 
-/* ---------- add-food sheet ---------- */
+/* ---------- full-page food picker ---------- */
+
+function openPicker(meal) {
+  sheet = {
+    meal, tab: 'recent', q: '', searchPage: 1, hasMore: false, results: [], searching: false,
+    locals: null, picked: null, editEntry: null, editing: false, subform: null, recipeDraft: null,
+    msg: '', scanning: false, searchMode: false,
+  };
+  render();
+}
 
 async function addEntry(entry) {
   const log = (await ctx.db.get('logs', date)) ?? blankLog();
@@ -148,7 +161,12 @@ async function updateEntry(entry) {
   const log = (await ctx.db.get('logs', date)) ?? blankLog();
   const target = sheet.editEntry;
   if (!target) return;
-  log.meals[target.meal].entries[target.index] = entry;
+  if (sheet.meal === target.meal) {
+    log.meals[target.meal].entries[target.index] = entry;
+  } else { // meal changed in the dropdown → move the entry
+    log.meals[target.meal].entries.splice(target.index, 1);
+    log.meals[sheet.meal].entries.push(entry);
+  }
   await ctx.db.put('logs', log);
   sheet = null;
   render();
@@ -159,17 +177,12 @@ async function openEntryEditor(log, meal, index) {
   if (!canEditEntry(entry)) return;
   const food = await foodForEntry(entry);
   if (!food) {
-    alert('This food is no longer in your saved foods. Search or scan it again to edit its servings.');
+    alert(t('This food is no longer in your saved foods. Search or scan it again to edit its servings.'));
     return;
   }
-  sheet = {
-    meal, tab: 'search', q: '', searchPage: 1, hasMore: false, results: [], picked: {
-      food,
-      servingIdx: servingIndexForEntry(food, entry),
-      qty: entry.qty || 1,
-    },
-    editEntry: { meal, index }, editing: false, recipeDraft: null, msg: '',
-  };
+  openPicker(meal);
+  sheet.picked = { food, servingIdx: servingIndexForEntry(food, entry), qty: entry.qty || 1 };
+  sheet.editEntry = { meal, index };
   render();
 }
 
@@ -182,16 +195,28 @@ async function foodForEntry(entry) {
   return ctx.db.get('foodcache', id);
 }
 
+// Stamp custom foods too, so they surface in Recent.
 async function cacheFood(food) {
-  if (String(food.id).startsWith('custom:')) return; // custom foods live in `foods`
+  if (String(food.id).startsWith('custom:')) {
+    const numId = +String(food.id).slice(7);
+    const prev = await ctx.db.get('foods', numId);
+    if (prev) await ctx.db.put('foods', { ...prev, lastUsed: Date.now() });
+    return;
+  }
   const prev = await ctx.db.get('foodcache', food.id);
   await ctx.db.put('foodcache', { ...prev, ...food, fav: prev?.fav || false, lastUsed: Date.now() });
 }
 
 async function searchFoodSources(query, page = 1) {
+  let usdaQuery = query;
+  let usdaSkipped = false;
+  if (getLang() === 'tr') {
+    usdaQuery = await turkishQueryToEnglish(query);
+    usdaSkipped = !usdaQuery;
+  }
   const settled = await Promise.allSettled([
     searchFoodsPage(query, page),
-    searchUsdaPage(query, settings.usdaApiKey, page),
+    usdaSkipped ? Promise.resolve({ foods: [], hasMore: false }) : searchUsdaPage(usdaQuery, settings.usdaApiKey, page),
   ]);
   const [off, usda] = settled.map((r) => r.status === 'fulfilled' ? r.value : { foods: [], hasMore: false });
   const errors = settled.map((r, i) => r.status === 'rejected'
@@ -203,16 +228,18 @@ async function searchFoodSources(query, page = 1) {
   let msg = null;
   if (foods.length && errors.some((e) => e.source === 'packaged-food')) {
     msg = { type: 'info', text: usingBundledUsda
-      ? 'Showing USDA results with the shared app key. Add your own USDA key in Settings if searches start rate-limiting.'
-      : 'Showing USDA results. Packaged-food search is temporarily unavailable.' };
+      ? t('Showing USDA results with the shared app key. Add your own USDA key in Settings if searches start rate-limiting.')
+      : t('Showing USDA results. Packaged-food search is temporarily unavailable.') };
   } else if (foods.length && errors.some((e) => e.source === 'USDA')) {
     msg = { type: 'info', text: usingBundledUsda
-      ? 'Showing packaged-food results. The shared USDA key may be rate-limited; add your own key in Settings for more reliability.'
-      : 'Showing packaged-food results. USDA search is temporarily unavailable.' };
-  } else if (!foods.length && errors.length === settled.length) {
-    msg = { type: 'error', text: `Food search is temporarily unavailable (${errors.map((e) => e.message).join('; ')}). Try again, add a custom food, or add your own USDA key in Settings.` };
+      ? t('Showing packaged-food results. The shared USDA key may be rate-limited; add your own key in Settings for more reliability.')
+      : t('Showing packaged-food results. USDA search is temporarily unavailable.') };
+  } else if (errors.length === 2) {
+    msg = { type: 'error', text: t('Food search is temporarily unavailable ({errors}). Try again, add a custom food, or add your own USDA key in Settings.', { errors: errors.map((e) => e.message).join('; ') }) };
   } else if (!foods.length) {
-    msg = { type: 'empty', text: `No foods with usable nutrition found for "${query}". Try another search or add a custom food.` };
+    msg = { type: 'empty', text: t('No foods with usable nutrition found for "{query}". Try another search or add a custom food.', { query }) };
+  } else if (usdaSkipped) {
+    msg = { type: 'info', text: t('USDA search was skipped — the query could not be translated to English.') };
   }
   return { foods, msg, hasMore };
 }
@@ -228,272 +255,212 @@ async function persistFood(food) {
   }
 }
 
-function resultRow(f, i, favs = {}) {
-  const per = `${Math.round(f.per100g.kcal)} kcal/100g`;
-  return `<div class="result">
-    <button class="open" data-open="${i}">${f.label}<small class="muted"> ${f.brand || ''}</small><br><small class="muted">${per}</small></button>
-    <button class="fav ${favs[f.id] ? 'on' : ''}" data-fav="${i}">★</button>
-    <button class="ghost" data-open="${i}">View</button></div>`;
+/* Default portion used for the row subtitle: the food's own serving if it
+   has one, otherwise 100 g. */
+function defaultPortion(f) {
+  const servings = normalizeServings(f);
+  const sv = servings.length > 1 ? servings[1] : servings[0];
+  const m = portionPreview(f, sv, 1);
+  const qty = sv.grams > 0 && sv.grams !== 100 ? `${+sv.grams.toFixed(1)}g` : sv.label;
+  return `${qty} · ${t('{kcal} Cal, {p}p, {c}c, {f}f', { kcal: m.kcal, p: m.p, c: m.c, f: m.f })}`;
 }
 
-function mergeFoods(existing, incoming) {
-  const seen = new Set(existing.map((f) => f.id));
-  return [...existing, ...incoming.filter((f) => !seen.has(f.id) && seen.add(f.id))];
+function foodRow(f, i, favs = {}) {
+  return `<button class="foodrow" data-open="${i}">
+    <span class="frname">${f.label}${f.brand ? ` <span class="muted">(${f.brand})</span>` : ''}</span>
+    <small class="muted">${favs[f.id] || f.fav ? '★ ' : ''}${defaultPortion(f)}</small>
+  </button>`;
 }
 
-/* food detail: serving picker + editable macros/servings */
-function detailView() {
-  const { food, servingIdx, qty } = sheet.picked;
-  const servings = normalizeServings(food);
-  const sv = servings[Math.min(servingIdx, servings.length - 1)];
-  const m = portionPreview(food, sv, qty);
-  if (sheet.editing) return editView(food, servings);
-  return `<div class="backbar"><button class="ghost" id="pback">‹ Back</button>
-    <h2 style="flex:1">${food.label}</h2>
-    <button class="ghost" id="pedit">Edit</button></div>
-  ${food.brand ? `<p class="muted" style="margin-top:-6px">${food.brand}</p>` : ''}
-  <label>Serving</label>
-  <div class="chiprow">${servings.map((s, i) =>
-    `<button class="chip ${i === Math.min(servingIdx, servings.length - 1) ? 'on' : ''}" data-serv="${i}">${s.label}</button>`).join('')}</div>
-  <label>How many servings? (0.5 = half)</label>
-  <input type="number" id="pqty" step="0.25" min="0" value="${qty}">
-  <div class="macrogrid">
-    <div><b id="pkcal">${m.kcal}</b><span>Calories</span></div><div><b id="pp">${m.p}g</b><span>Protein</span></div>
-    <div><b id="pc">${m.c}g</b><span>Carbs</span></div><div><b id="pf">${m.f}g</b><span>Fat</span></div>
-  </div>
-  <p class="hint" id="ppreview">${portionPreviewHint(sv, qty, m)}</p>
-  <button class="primary" id="paddconfirm">${sheet.editEntry ? `Update ${MEALS[sheet.meal]} entry` : `Add to ${MEALS[sheet.meal]}`}</button>`;
+async function localFoods() {
+  if (sheet.locals) return sheet.locals;
+  const [cached, customs] = await Promise.all([ctx.db.getAll('foodcache'), ctx.db.getAll('foods')]);
+  const customList = customs.map((f) => ({ ...f, id: 'custom:' + f.id, source: 'custom' }));
+  sheet.locals = { cached, customs: customList };
+  return sheet.locals;
 }
 
-function portionPreviewHint(serving, qty, preview) {
-  return serving.grams > 0
-    ? `${qty} × ${serving.label} = ${preview.grams} g`
-    : `Serving macros are entered directly for ${serving.label}.`;
+function matchLocal(list, q) {
+  const needle = q.toLocaleLowerCase(locale());
+  return list.filter((f) => `${f.label} ${f.brand || ''}`.toLocaleLowerCase(locale()).includes(needle));
 }
 
-function editView(food, servings) {
-  const source = String(food.id).startsWith('custom:') ? customMacroSourceServing({ ...food, servings }) : null;
-  const row = (s, i, fixed = false) => fixed
-    ? `<div class="servedit fixed" data-servrow="${i}"><span class="muted">100 g (always available)</span></div>`
-    : `<div class="servedit" data-servrow="${i}">
-        <input data-slabel="${i}" value="${s.label}" placeholder="Serving">
-        <input data-sgrams="${i}" type="number" step="0.1" value="${s.grams || ''}" placeholder="g">
-        <input data-skcal="${i}" type="number" step="0.1" value="${s.macros?.kcal ?? ''}" placeholder="kcal">
-        <input data-sp="${i}" type="number" step="0.1" value="${s.macros?.p ?? ''}" placeholder="P">
-        <input data-sc="${i}" type="number" step="0.1" value="${s.macros?.c ?? ''}" placeholder="C">
-        <input data-sf="${i}" type="number" step="0.1" value="${s.macros?.f ?? ''}" placeholder="F">
-        <button class="del" data-sdel="${i}">×</button>
-      </div>`;
-  return `<div class="backbar"><button class="ghost" id="peditback">‹ Cancel</button>
-    <h2 style="flex:1">Edit food</h2></div>
-  <label>Name</label><input id="ename" value="${food.label}">
-  <label>Barcode (optional)</label><input id="ebarcode" inputmode="numeric" value="${food.barcode || ''}" placeholder="Scan or type barcode">
-  <label>Macros per 100 g</label>
-  <div class="macroedit">
-    <label>Calories<input id="ek" type="number" step="0.1" value="${food.per100g.kcal}"></label>
-    <label>Protein (g)<input id="ep" type="number" step="0.1" value="${food.per100g.p}"></label>
-    <label>Carbs (g)<input id="ec" type="number" step="0.1" value="${food.per100g.c}"></label>
-    <label>Fat (g)<input id="ef" type="number" step="0.1" value="${food.per100g.f}"></label>
-  </div>
-  ${source ? `<p class="hint sourcehint">100 g is calculated from ${source.label} (${source.grams} g).</p>` : ''}
-  <label>Servings</label>
-  ${servings.map((s, i) => s.grams === 100
-    ? row(s, i, true)
-    : row(s, i)).join('')}
-  <div class="servedit add">
-    <input id="nslabel" placeholder="e.g. 1 cup">
-    <input id="nsgrams" type="number" step="0.1" placeholder="g">
-    <input id="nskcal" type="number" step="0.1" placeholder="kcal">
-    <input id="nsp" type="number" step="0.1" placeholder="P">
-    <input id="nsc" type="number" step="0.1" placeholder="C">
-    <input id="nsf" type="number" step="0.1" placeholder="F">
-    <button class="ghost" id="nsadd" style="padding:8px">+</button></div>
-  <p class="hint">Each serving can be gram-based, macro-based, or both. If you enter macros, the app will use them for that serving instead of scaling from 100 g.</p>
-  <button class="primary" id="esave">Save food</button>`;
-}
+/* ---------- picker rendering ---------- */
 
-async function renderSheet() {
-  const el = root.querySelector('#sheetroot');
-  const favsList = sheet.tab === 'recent' ? await ctx.db.getAll('foodcache') : [];
-  const customs = sheet.tab === 'custom' ? await ctx.db.getAll('foods') : [];
-  const recipes = sheet.tab === 'recipe' ? await ctx.db.getAll('recipes') : [];
+const mealSelect = () => `<select id="mealpick" class="mealpick">${MEALS.map((m, i) =>
+  `<option value="${i}" ${i === sheet.meal ? 'selected' : ''}>${t(m)}</option>`).join('')}</select>`;
+
+async function renderPicker() {
+  if (sheet.picked) return renderFoodPage();
+  const { cached, customs } = await localFoods();
   const favs = {};
-  for (const c of await ctx.db.getAll('foodcache')) if (c.fav) favs[c.id] = true;
+  for (const c of cached) if (c.fav) favs[c.id] = true;
 
-  const tabs = [['search', 'Search'], ['recent', 'Recent'], ['custom', 'Custom'], ['recipe', 'Recipes'], ['quick', 'Quick']];
   let body = '';
-  if (sheet.picked) body = detailView();
-  else if (sheet.tab === 'search') {
-    body = `<div class="row"><input id="q" placeholder="Search foods…" value="${sheet.q}" style="flex:2 1 120px">
-      <button class="ghost ${sheet.busy ? 'loading' : ''}" id="go" ${sheet.busy ? 'disabled' : ''}>${sheet.busy ? 'Searching...' : 'Search'}</button>
-      <button class="ghost" id="scan">📷 Scan</button></div>
-      <div id="scanbox"></div>
-      ${sheet.msg ? `<p class="${sheet.msg.type === 'error' ? 'msg' : 'muted'}">${sheet.msg.text}</p>` : ''}
-      ${sheet.busy ? '<p class="muted">Searching...</p>' : ''}
-      ${(sheet.results || []).map((f, i) => resultRow(f, i, favs)).join('')}
-      ${sheet.hasMore && !sheet.busy ? '<button class="ghost" id="morefoods" style="width:100%;margin-top:10px">More results</button>' : ''}`;
+  if (sheet.searchMode && sheet.q.trim().length >= 2) {
+    const q = sheet.q.trim();
+    const locals = [...matchLocal(customs, q), ...matchLocal(cached, q)]
+      .sort((a, b) => (b.lastUsed || 0) - (a.lastUsed || 0)).slice(0, 15);
+    sheet.results = [...locals, ...(sheet.online || [])];
+    body = `
+      ${locals.length ? `<p class="listhead">${t('Recent & My foods ({n})', { n: locals.length })}</p>
+        <div class="foodlist">${locals.map((f, i) => foodRow(f, i, favs)).join('')}</div>` : ''}
+      ${sheet.searching ? `<p class="muted" style="margin-top:10px">${t('Searching...')}</p>` : ''}
+      ${(sheet.online || []).length ? `<p class="listhead">${t('Search results')}</p>
+        <div class="foodlist">${sheet.online.map((f, i) => foodRow(f, locals.length + i, favs)).join('')}</div>` : ''}
+      ${sheet.msg ? `<p class="${sheet.msg.type === 'error' ? 'msg' : 'muted'}" style="margin-top:8px">${sheet.msg.text}</p>` : ''}
+      ${sheet.hasMore && !sheet.searching ? `<button class="ghost" id="morefoods" style="width:100%;margin-top:10px">${t('More results')}</button>` : ''}`;
+  } else if (sheet.searchMode) {
+    body = `<div class="searchempty">
+      <p style="font-size:1.1rem;font-weight:700;margin:26px 0 6px">${t('Find the foods you ate')}</p>
+      <p class="muted">${t('Search by food, brand name, or your favorites.')}</p></div>`;
   } else if (sheet.tab === 'recent') {
-    const rec = favsList.sort((a, b) => (b.fav - a.fav) || (b.lastUsed - a.lastUsed)).slice(0, 30);
+    const rec = [...cached, ...customs.filter((c) => c.lastUsed)]
+      .sort((a, b) => ((b.fav || 0) - (a.fav || 0)) || ((b.lastUsed || 0) - (a.lastUsed || 0))).slice(0, 30);
     sheet.results = rec;
-    body = rec.length ? rec.map((f, i) => resultRow(f, i, favs)).join('') : '<p class="muted">Foods you log will appear here.</p>';
-  } else if (sheet.tab === 'custom') {
-    sheet.results = customs.map((f) => ({ ...f, id: 'custom:' + f.id }));
-    body = `${sheet.results.map((f, i) => resultRow(f, i, favs)).join('')}
-      <h3 style="margin-top:12px">New custom food</h3>
-      <input id="cname" placeholder="Name">
-      <input id="cbarcode" inputmode="numeric" placeholder="barcode (optional)">
-      <div class="row"><input id="cslabel" placeholder="serving name (e.g. 2/3 cup)"><input id="csgrams" type="number" placeholder="grams"></div>
-      <label id="cmacros">Macros per 100 g</label>
-      <div class="row"><input id="ck" type="number" placeholder="kcal"><input id="cp" type="number" placeholder="protein"></div>
-      <div class="row"><input id="cc" type="number" placeholder="carbs"><input id="cf" type="number" placeholder="fat"></div>
-      <p class="hint">Enter the macros for the serving above. Leave the serving blank to enter per 100 g instead.</p>
-      <button class="ghost" id="csave" style="margin-top:8px">Save food</button>`;
-  } else if (sheet.tab === 'recipe') {
-    body = renderRecipeTab(recipes);
+    body = rec.length
+      ? `<div class="spread listhead"><span>${t('{n} results', { n: rec.length })}</span><span>${t('Recently used')}</span></div>
+        <div class="foodlist">${rec.map((f, i) => foodRow(f, i, favs)).join('')}</div>`
+      : `<p class="muted" style="margin-top:16px">${t('Foods you log will appear here.')}</p>`;
+  } else if (sheet.tab === 'mine') {
+    sheet.results = customs;
+    body = `
+      <div class="row" style="margin:10px 0">
+        <button class="ghost" id="newfoodbtn">${t('+ New custom food')}</button>
+        <button class="ghost" id="quickbtn">${t('Quick add')}</button></div>
+      ${sheet.subform === 'newfood' ? newFoodForm() : ''}
+      ${sheet.subform === 'quick' ? quickAddForm() : ''}
+      ${customs.length ? `<div class="foodlist">${customs.map((f, i) => foodRow(f, i, favs)).join('')}</div>`
+        : `<p class="muted">${t('Foods you create will appear here.')}</p>`}`;
   } else {
-    body = `<h3>Quick add</h3><input id="qlabel" placeholder="Label (optional)">
-      <div class="row"><input id="qk" type="number" placeholder="kcal"><input id="qp" type="number" placeholder="protein g"></div>
-      <div class="row"><input id="qc" type="number" placeholder="carbs g"><input id="qf" type="number" placeholder="fat g"></div>
-      <button class="ghost" id="qadd" style="margin-top:8px">Add</button>`;
+    body = renderRecipeTab(await ctx.db.getAll('recipes'));
   }
 
-  el.innerHTML = `<div class="sheet-back" id="back"></div><div class="sheet">
-    ${sheet.picked ? '' : `<div class="spread"><h2>Add to ${MEALS[sheet.meal]}</h2><button class="ghost" id="close">Close</button></div>
-    <div class="seg" style="margin:8px 0">${tabs.map(([id, l]) =>
-      `<button data-tab="${id}" class="${sheet.tab === id ? 'on' : ''}">${l}</button>`).join('')}</div>`}
+  root.innerHTML = `<div class="picker">
+    <div class="pickerhead">
+      ${sheet.searchMode ? '' : `<button class="ghost iconbtn" id="pickerback">‹</button>`}
+      ${sheet.searchMode ? '' : mealSelect()}
+      <div class="searchbar" style="flex:1">
+        <span aria-hidden="true">🔍</span>
+        <input id="q" placeholder="${t('Search')}" value="${sheet.q}" autocomplete="off">
+        <button class="scanicon" id="scan" aria-label="${t('📷 Scan')}">▦</button>
+      </div>
+      ${sheet.searchMode ? `<button class="ghost" id="cancelsearch">${t('Cancel')}</button>` : ''}
+    </div>
+    <div id="scanbox"></div>
+    ${sheet.searchMode ? '' : `<div class="pickertabs">${[['recent', t('Recent')], ['mine', t('My Foods')], ['recipe', t('Recipes')]]
+      .map(([id, l]) => `<button data-tab="${id}" class="${sheet.tab === id ? 'on' : ''}">${l}</button>`).join('')}</div>`}
     ${body}</div>`;
-  wireSheet(el);
+  wirePicker();
 }
 
-function wireSheet(el) {
-  const q = (sel) => el.querySelector(sel);
-  q('#back').onclick = () => { sheet = null; render(); };
-  const close = q('#close');
-  if (close) close.onclick = () => { sheet = null; render(); };
-  el.querySelectorAll('[data-tab]').forEach((b) =>
-    (b.onclick = () => { sheet.tab = b.dataset.tab; sheet.picked = null; sheet.results = []; sheet.searchPage = 1; sheet.hasMore = false; sheet.msg = ''; renderSheetStable(); }));
-  el.querySelectorAll('[data-open]').forEach((b) =>
+function newFoodForm() {
+  return `<div class="card" style="margin:8px 0">
+    <h3>${t('New custom food')}</h3>
+    <input id="cname" placeholder="${t('Name')}">
+    <input id="cbarcode" inputmode="numeric" placeholder="${t('barcode (optional)')}" style="margin-top:6px">
+    <div class="row" style="margin-top:6px"><input id="cslabel" placeholder="${t('serving name (e.g. 2/3 cup)')}"><input id="csgrams" type="number" placeholder="${t('grams')}"></div>
+    <label id="cmacros">${t('Macros per 100 g')}</label>
+    <div class="row"><input id="ck" type="number" placeholder="${t('kcal')}"><input id="cp" type="number" placeholder="${t('protein')}"></div>
+    <div class="row" style="margin-top:6px"><input id="cc" type="number" placeholder="${t('carbs')}"><input id="cf" type="number" placeholder="${t('fat')}"></div>
+    <p class="hint">${t('Enter the macros for the serving above. Leave the serving blank to enter per 100 g instead.')}</p>
+    <button class="ghost" id="csave" style="margin-top:8px">${t('Save food')}</button></div>`;
+}
+
+function quickAddForm() {
+  return `<div class="card" style="margin:8px 0">
+    <h3>${t('Quick add')}</h3>
+    <input id="qlabel" placeholder="${t('Label (optional)')}">
+    <div class="row" style="margin-top:6px"><input id="qk" type="number" placeholder="${t('kcal')}"><input id="qp" type="number" placeholder="${t('protein g')}"></div>
+    <div class="row" style="margin-top:6px"><input id="qc" type="number" placeholder="${t('carbs g')}"><input id="qf" type="number" placeholder="${t('fat g')}"></div>
+    <button class="ghost" id="qadd" style="margin-top:8px">${t('Add')}</button></div>`;
+}
+
+let searchTimer = null;
+async function runOnlineSearch(append = false) {
+  if (!sheet) return; // debounce timer can outlive the picker
+  const query = sheet.q.trim();
+  if (query.length < 2) return;
+  sheet.searchPage = append ? (sheet.searchPage || 1) + 1 : 1;
+  sheet.searching = true;
+  if (!append) { sheet.online = []; sheet.msg = ''; }
+  renderPickerStable();
+  try {
+    const { foods, msg, hasMore } = await searchFoodSources(query, sheet.searchPage);
+    if (!sheet || sheet.q.trim() !== query) return; // picker closed or stale response
+    const hydrated = await Promise.all(foods.map(async (f) => (await ctx.db.get('foodcache', f.id)) ?? f));
+    sheet.online = append ? mergeFoods(sheet.online || [], hydrated) : hydrated;
+    sheet.hasMore = hasMore;
+    sheet.msg = msg;
+  } catch (e) {
+    if (!append) sheet.online = [];
+    sheet.hasMore = false;
+    sheet.msg = { type: 'error', text: t('Food search is temporarily unavailable: {message}', { message: e.message }) };
+  } finally {
+    if (sheet) { sheet.searching = false; renderPickerStable(); }
+  }
+}
+
+function wirePicker() {
+  const q = (sel) => root.querySelector(sel);
+  const back = q('#pickerback');
+  if (back) back.onclick = () => { clearTimeout(searchTimer); sheet = null; render(); };
+  const mp = q('#mealpick');
+  if (mp) mp.onchange = () => { sheet.meal = +mp.value; };
+  root.querySelectorAll('[data-tab]').forEach((b) =>
+    (b.onclick = () => { sheet.tab = b.dataset.tab; sheet.subform = null; renderPickerStable(); }));
+
+  /* search field: entering it switches to search mode; typing filters live */
+  const input = q('#q');
+  if (input) {
+    input.onfocus = () => {
+      if (!sheet.searchMode) { sheet.searchMode = true; renderPickerStable().then(() => root.querySelector('#q')?.focus()); }
+    };
+    input.oninput = () => {
+      sheet.q = input.value;
+      clearTimeout(searchTimer);
+      if (sheet.q.trim().length >= 2) {
+        searchTimer = setTimeout(() => runOnlineSearch(false), 600);
+      } else {
+        sheet.online = []; sheet.msg = ''; sheet.hasMore = false;
+      }
+      renderListOnly();
+    };
+    input.onkeydown = (e) => { if (e.key === 'Enter') { clearTimeout(searchTimer); runOnlineSearch(false); input.blur(); } };
+  }
+  const cancel = q('#cancelsearch');
+  if (cancel) cancel.onclick = () => {
+    clearTimeout(searchTimer);
+    sheet.searchMode = false; sheet.q = ''; sheet.online = []; sheet.msg = ''; sheet.hasMore = false;
+    renderPickerStable();
+  };
+  const more = q('#morefoods');
+  if (more) more.onclick = () => runOnlineSearch(true);
+  const scan = q('#scan');
+  if (scan) scan.onclick = () => startBarcodeScan(root);
+
+  root.querySelectorAll('[data-open]').forEach((b) =>
     (b.onclick = async () => {
       const food = sheet.results[+b.dataset.open];
       const hydrated = food?.source === 'usda' ? await hydrateUsdaFood(food, settings.usdaApiKey) : food;
       const servings = normalizeServings(hydrated);
       sheet.picked = { food: hydrated, servingIdx: servings.length > 1 ? 1 : 0, qty: 1 };
       sheet.editing = false;
-      renderSheetStable();
+      renderPickerStable();
     }));
-  el.querySelectorAll('[data-fav]').forEach((b) => (b.onclick = async () => {
-    const f = sheet.results[+b.dataset.fav];
-    const prev = await ctx.db.get('foodcache', f.id);
-    await ctx.db.put('foodcache', { ...f, fav: !(prev?.fav), lastUsed: prev?.lastUsed || Date.now() });
-    renderSheet();
-  }));
 
-  /* search */
-  const runSearch = async (append = false) => {
-    const query = q('#q')?.value.trim() || sheet.q;
-    if (!query) return;
-    sheet.q = query;
-    sheet.searchPage = append ? (sheet.searchPage || 1) + 1 : 1;
-    sheet.busy = true;
-    sheet.msg = '';
-    renderSheetStable();
-    try {
-      const { foods, msg, hasMore } = await searchFoodSources(sheet.q, sheet.searchPage);
-      const hydrated = await Promise.all(foods.map(async (f) =>
-        (await ctx.db.get('foodcache', f.id)) ?? f));
-      sheet.results = append ? mergeFoods(sheet.results || [], hydrated) : hydrated;
-      sheet.hasMore = hasMore;
-      sheet.msg = msg;
-    } catch (e) {
-      if (!append) sheet.results = [];
-      sheet.hasMore = false;
-      sheet.msg = { type: 'error', text: `Food search is temporarily unavailable: ${e.message}` };
-    } finally {
-      sheet.busy = false;
-      renderSheetStable();
-    }
-  };
-  const go = q('#go');
-  if (go) {
-    go.onclick = () => runSearch(false);
-    q('#q').onkeydown = (e) => { if (e.key === 'Enter') runSearch(false); };
-  }
-  const more = q('#morefoods');
-  if (more) more.onclick = () => runSearch(true);
-  const scan = q('#scan');
-  if (scan) scan.onclick = () => startBarcodeScan(el);
-
-  /* detail */
-  const pback = q('#pback');
-  if (pback) pback.onclick = () => {
-    if (sheet.editEntry) {
-      sheet = null;
-      render();
-      return;
-    }
-    sheet.picked = null;
-    renderSheetStable();
-  };
-  el.querySelectorAll('[data-serv]').forEach((b) =>
-    (b.onclick = () => {
-      sheet.picked.servingIdx = +b.dataset.serv;
-      sheet.picked.qty = +q('#pqty').value || 0;
-      el.querySelectorAll('[data-serv]').forEach((chip) => chip.classList.toggle('on', chip === b));
-      updatePortionPreview(el);
-    }));
-  const pqty = q('#pqty');
-  if (pqty && !sheet.editing) pqty.oninput = () => { sheet.picked.qty = +pqty.value || 0; updatePortionPreview(el); };
-  const pedit = q('#pedit');
-  if (pedit) pedit.onclick = () => { sheet.editing = true; renderSheetStable(); };
-  const confirm = q('#paddconfirm');
-  if (confirm) confirm.onclick = async () => {
-    const { food, servingIdx } = sheet.picked;
-    const qty = +q('#pqty')?.value || 0;
-    if (!qty) return;
-    const servings = normalizeServings(food);
-    const sv = servings[Math.min(servingIdx, servings.length - 1)];
-    await cacheFood({ ...food, servings });
-    const entry = entryFromPortion(food, sv, qty);
-    if (sheet.editEntry) await updateEntry(entry);
-    else await addEntry(entry);
-  };
-
-  /* edit mode */
-  const peditback = q('#peditback');
-  if (peditback) peditback.onclick = () => { sheet.editing = false; renderSheetStable(); };
-  const nsadd = q('#nsadd');
-  if (nsadd) nsadd.onclick = () => {
-    keepEdits(el);
-    const label = q('#nslabel').value.trim(), grams = +q('#nsgrams').value;
-    const macros = readMacros(q, 'ns');
-    if (!label || !(grams > 0) && !macros) return;
-    sheet.picked.food.servings = [...normalizeServings(sheet.picked.food), { label, ...(grams > 0 ? { grams } : {}), ...(macros ? { macros } : {}) }];
-    renderSheetStable();
-  };
-  el.querySelectorAll('[data-sdel]').forEach((b) => (b.onclick = () => {
-    keepEdits(el);
-    const servings = normalizeServings(sheet.picked.food);
-    servings.splice(+b.dataset.sdel, 1);
-    sheet.picked.food.servings = servings;
-    renderSheetStable();
-  }));
-  const esave = q('#esave');
-  if (esave) esave.onclick = async () => {
-    keepEdits(el);
-    await persistFood({ ...sheet.picked.food, servings: normalizeServings(sheet.picked.food) });
-    sheet.editing = false;
-    sheet.picked.servingIdx = Math.min(sheet.picked.servingIdx, normalizeServings(sheet.picked.food).length - 1);
-    renderSheetStable();
-  };
-
-  /* custom food */
+  /* my foods: subforms */
+  const nf = q('#newfoodbtn');
+  if (nf) nf.onclick = () => { sheet.subform = sheet.subform === 'newfood' ? null : 'newfood'; renderPickerStable(); };
+  const qb = q('#quickbtn');
+  if (qb) qb.onclick = () => { sheet.subform = sheet.subform === 'quick' ? null : 'quick'; renderPickerStable(); };
   const csgrams = q('#csgrams');
   if (csgrams) {
     const syncMacroLabel = () => {
       const g = +csgrams.value;
       q('#cmacros').textContent = g > 0
-        ? `Macros for ${q('#cslabel').value.trim() || 'this serving'} (${g} g)`
-        : 'Macros per 100 g';
+        ? t('Macros for {label} ({g} g)', { label: q('#cslabel').value.trim() || t('this serving'), g })
+        : t('Macros per 100 g');
     };
     csgrams.oninput = syncMacroLabel;
     q('#cslabel').oninput = syncMacroLabel;
@@ -507,41 +474,195 @@ function wireSheet(el) {
       macros: { kcal: +q('#ck').value || 0, p: +q('#cp').value || 0, c: +q('#cc').value || 0, f: +q('#cf').value || 0 },
       servingLabel: q('#cslabel').value, servingGrams: +q('#csgrams').value,
     }));
-    renderSheetStable();
+    sheet.subform = null;
+    sheet.locals = null; // refresh cache
+    renderPickerStable();
   };
-
-  /* quick add */
   const qadd = q('#qadd');
   if (qadd) qadd.onclick = () => addEntry({
-    label: q('#qlabel').value.trim() || 'Quick add', brand: '', qty: 1, unit: 'x',
+    label: q('#qlabel').value.trim() || t('Quick add'), brand: '', qty: 1, unit: 'x',
     kcal: +q('#qk').value || 0, p: +q('#qp').value || 0, c: +q('#qc').value || 0, f: +q('#qf').value || 0,
   });
-  wireRecipeTab(el);
+  wireRecipeTab(root);
 }
 
-function updatePortionPreview(el) {
+/* Re-render just the picker list while typing (keeps the input focused). */
+function renderListOnly() {
+  renderPickerStable({ keepFocus: true });
+}
+
+async function renderPickerStable(opts = {}) {
+  const top = root.scrollTop; // root is #view, the app's scroll container
+  const hadFocus = opts.keepFocus && document.activeElement?.id === 'q';
+  const selStart = hadFocus ? document.activeElement.selectionStart : null;
+  await renderPicker();
+  root.scrollTop = top;
+  if (hadFocus) {
+    const input = root.querySelector('#q');
+    if (input) { input.focus(); input.setSelectionRange(selStart, selStart); }
+  }
+}
+
+function mergeFoods(existing, incoming) {
+  const seen = new Set(existing.map((f) => f.id));
+  return [...existing, ...incoming.filter((f) => !seen.has(f.id) && seen.add(f.id))];
+}
+
+/* ---------- food page: nutrition + serving adjustment ---------- */
+
+function renderFoodPage() {
+  const { food, servingIdx, qty } = sheet.picked;
+  const servings = normalizeServings(food);
+  const sv = servings[Math.min(servingIdx, servings.length - 1)];
+  const m = portionPreview(food, sv, qty);
+  if (sheet.editing) { root.innerHTML = `<div class="picker">${editView(food, servings)}</div>`; wireEditView(); return; }
+  root.innerHTML = `<div class="picker">
+    <div class="pickerhead">
+      <button class="ghost iconbtn" id="pback">×</button>
+      ${mealSelect()}
+      <button class="ghost" id="pedit">${t('Edit')}</button>
+    </div>
+    <h1 style="margin:14px 0 2px">${food.label}</h1>
+    ${food.brand ? `<p class="muted" style="margin:0 0 10px">${food.brand}</p>` : '<div style="height:10px"></div>'}
+    <div class="macrostrip card">
+      <div><b id="pkcal">${m.kcal}</b><span>${t('Cal')}</span></div>
+      <div><b id="pp" class="mp">${m.p}</b><span>${t('Protein (g)')}</span></div>
+      <div><b id="pc" class="mc">${m.c}</b><span>${t('Carbs (g)')}</span></div>
+      <div><b id="pf" class="mf">${m.f}</b><span>${t('Fat (g)')}</span></div>
+    </div>
+    <div class="row" style="margin:14px 0 0">
+      <input type="number" id="pqty" step="0.25" min="0" value="${qty}" style="flex:0 0 84px;text-align:center">
+      <select id="servsel" style="flex:1">${servings.map((s, i) =>
+        `<option value="${i}" ${i === Math.min(servingIdx, servings.length - 1) ? 'selected' : ''}>${s.label}</option>`).join('')}</select>
+    </div>
+    <p class="hint" id="ppreview">${portionPreviewHint(sv, qty, m)}</p>
+    <button class="primary" id="paddconfirm">${sheet.editEntry ? t('Update entry') : t('Add food')}</button>
+    <div class="card" style="margin-top:18px">
+      <h2>${t('Nutrition')}</h2>
+      <div class="listrow"><span>${t('Calories')}</span><b id="nkcal">${m.kcal}</b></div>
+      <div class="listrow"><span>${t('Protein')}</span><b id="np">${m.p} g</b></div>
+      <div class="listrow"><span>${t('Carbs')}</span><b id="nc">${m.c} g</b></div>
+      <div class="listrow"><span>${t('Fat')}</span><b id="nf">${m.f} g</b></div>
+    </div></div>`;
+  wireFoodPage();
+}
+
+function portionPreviewHint(serving, qty, preview) {
+  return serving.grams > 0
+    ? `${qty} × ${serving.label} = ${preview.grams} g`
+    : t('Serving macros are entered directly for {label}.', { label: serving.label });
+}
+
+function updatePortionPreview() {
   if (!sheet?.picked || sheet.editing) return;
   const { food, servingIdx, qty } = sheet.picked;
   const servings = normalizeServings(food);
   const sv = servings[Math.min(servingIdx, servings.length - 1)];
   const m = portionPreview(food, sv, qty);
   const set = (id, value) => {
-    const node = el.querySelector(id);
+    const node = root.querySelector(id);
     if (node) node.textContent = value;
   };
-  set('#pkcal', m.kcal);
-  set('#pp', `${m.p}g`);
-  set('#pc', `${m.c}g`);
-  set('#pf', `${m.f}g`);
+  set('#pkcal', m.kcal); set('#pp', m.p); set('#pc', m.c); set('#pf', m.f);
+  set('#nkcal', m.kcal); set('#np', `${m.p} g`); set('#nc', `${m.c} g`); set('#nf', `${m.f} g`);
   set('#ppreview', portionPreviewHint(sv, qty, m));
 }
 
-async function renderSheetStable() {
-  const sheetEl = root.querySelector('.sheet');
-  const top = sheetEl?.scrollTop ?? 0;
-  await renderSheet();
-  const next = root.querySelector('.sheet');
-  if (next) next.scrollTop = top;
+function wireFoodPage() {
+  const q = (sel) => root.querySelector(sel);
+  q('#pback').onclick = () => {
+    if (sheet.editEntry) { sheet = null; render(); return; }
+    sheet.picked = null;
+    renderPickerStable();
+  };
+  const mp = q('#mealpick');
+  if (mp) mp.onchange = () => { sheet.meal = +mp.value; };
+  q('#pedit').onclick = () => { sheet.editing = true; renderPickerStable(); };
+  const servsel = q('#servsel');
+  servsel.onchange = () => { sheet.picked.servingIdx = +servsel.value; updatePortionPreview(); };
+  const pqty = q('#pqty');
+  pqty.oninput = () => { sheet.picked.qty = +pqty.value || 0; updatePortionPreview(); };
+  q('#paddconfirm').onclick = async () => {
+    const { food, servingIdx } = sheet.picked;
+    const qty = +q('#pqty')?.value || 0;
+    if (!qty) return;
+    const servings = normalizeServings(food);
+    const sv = servings[Math.min(servingIdx, servings.length - 1)];
+    await cacheFood({ ...food, servings });
+    const entry = entryFromPortion(food, sv, qty);
+    if (sheet.editEntry) await updateEntry(entry);
+    else await addEntry(entry);
+  };
+}
+
+/* ---------- food edit form (macros/servings) ---------- */
+
+function editView(food, servings) {
+  const source = String(food.id).startsWith('custom:') ? customMacroSourceServing({ ...food, servings }) : null;
+  const row = (s, i, fixed = false) => fixed
+    ? `<div class="servedit fixed" data-servrow="${i}"><span class="muted">${t('100 g (always available)')}</span></div>`
+    : `<div class="servedit" data-servrow="${i}">
+        <input data-slabel="${i}" value="${s.label}" placeholder="${t('Serving')}">
+        <input data-sgrams="${i}" type="number" step="0.1" value="${s.grams ?? ''}" placeholder="g">
+        <input data-skcal="${i}" type="number" step="0.1" value="${s.macros?.kcal ?? ''}" placeholder="${t('kcal')}">
+        <input data-sp="${i}" type="number" step="0.1" value="${s.macros?.p ?? ''}" placeholder="P">
+        <input data-sc="${i}" type="number" step="0.1" value="${s.macros?.c ?? ''}" placeholder="C">
+        <input data-sf="${i}" type="number" step="0.1" value="${s.macros?.f ?? ''}" placeholder="F">
+        <button class="del" data-sdel="${i}">×</button>
+      </div>`;
+  return `<div class="backbar"><button class="ghost" id="peditback">${t('‹ Cancel')}</button>
+    <h2 style="flex:1">${t('Edit food')}</h2></div>
+  <label>${t('Name')}</label><input id="ename" value="${food.label}">
+  <label>${t('Barcode (optional)')}</label><input id="ebarcode" inputmode="numeric" value="${food.barcode || ''}" placeholder="${t('Scan or type barcode')}">
+  <label>${t('Macros per 100 g')}</label>
+  <div class="macroedit">
+    <label>${t('Calories')}<input id="ek" type="number" step="0.1" value="${food.per100g.kcal}"></label>
+    <label>${t('Protein (g)')}<input id="ep" type="number" step="0.1" value="${food.per100g.p}"></label>
+    <label>${t('Carbs (g)')}<input id="ec" type="number" step="0.1" value="${food.per100g.c}"></label>
+    <label>${t('Fat (g)')}<input id="ef" type="number" step="0.1" value="${food.per100g.f}"></label>
+  </div>
+  ${source ? `<p class="hint sourcehint">${t('100 g is calculated from {label} ({grams} g).', { label: source.label, grams: source.grams })}</p>` : ''}
+  <label>${t('Servings')}</label>
+  ${servings.map((s, i) => s.grams === 100 ? row(s, i, true) : row(s, i)).join('')}
+  <div class="servedit add">
+    <input id="nslabel" placeholder="${t('e.g. 1 cup')}">
+    <input id="nsgrams" type="number" step="0.1" placeholder="g">
+    <input id="nskcal" type="number" step="0.1" placeholder="${t('kcal')}">
+    <input id="nsp" type="number" step="0.1" placeholder="P">
+    <input id="nsc" type="number" step="0.1" placeholder="C">
+    <input id="nsf" type="number" step="0.1" placeholder="F">
+    <button class="ghost" id="nsadd" style="padding:8px">+</button></div>
+  <p class="hint">${t('Each serving can be gram-based, macro-based, or both. If you enter macros, the app will use them for that serving instead of scaling from 100 g.')}</p>
+  <button class="primary" id="esave">${t('Save food')}</button>`;
+}
+
+function wireEditView() {
+  const q = (sel) => root.querySelector(sel);
+  q('#peditback').onclick = () => { sheet.editing = false; renderPickerStable(); };
+  const nsadd = q('#nsadd');
+  if (nsadd) nsadd.onclick = () => {
+    keepEdits(root);
+    const label = q('#nslabel').value.trim(), grams = +q('#nsgrams').value;
+    const macros = readMacros(q, 'ns');
+    if (!label || !(grams > 0) && !macros) return;
+    sheet.picked.food.servings = [...normalizeServings(sheet.picked.food), { label, ...(grams > 0 ? { grams } : {}), ...(macros ? { macros } : {}) }];
+    renderPickerStable();
+  };
+  root.querySelectorAll('[data-sdel]').forEach((b) => (b.onclick = () => {
+    keepEdits(root);
+    const servings = normalizeServings(sheet.picked.food);
+    servings.splice(+b.dataset.sdel, 1);
+    sheet.picked.food.servings = servings;
+    renderPickerStable();
+  }));
+  q('#esave').onclick = async () => {
+    keepEdits(root);
+    await persistFood({ ...sheet.picked.food, servings: normalizeServings(sheet.picked.food) });
+    sheet.editing = false;
+    sheet.locals = null;
+    sheet.picked.servingIdx = Math.min(sheet.picked.servingIdx, normalizeServings(sheet.picked.food).length - 1);
+    renderPickerStable();
+  };
 }
 
 // pull current edit-form values into sheet.picked.food before any re-render
@@ -595,30 +716,30 @@ function renderRecipeTab(recipes) {
   const d = sheet.recipeDraft;
   if (!d) {
     return `${recipes.map((r) => `<div class="result"><div>${r.name}
-        <small class="muted">${Math.round(r.perServing.kcal)} kcal/serving · makes ${r.servings}</small></div>
+        <small class="muted">${t('{kcal} kcal/serving · makes {n}', { kcal: Math.round(r.perServing.kcal), n: r.servings })}</small></div>
       <input type="number" step="0.5" value="1" data-recqty="${r.id}" style="width:64px">
-      <button class="ghost" data-recadd="${r.id}">Add</button></div>`).join('')
-      || '<p class="muted">No recipes yet.</p>'}
-      <button class="ghost" id="recnew" style="margin-top:10px">+ New recipe</button>`;
+      <button class="ghost" data-recadd="${r.id}">${t('Add')}</button></div>`).join('')
+      || `<p class="muted" style="margin-top:16px">${t('No recipes yet.')}</p>`}
+      <button class="ghost" id="recnew" style="margin-top:10px">${t('+ New recipe')}</button>`;
   }
-  return `<h3>New recipe</h3>
-    <input id="rname" placeholder="Recipe name" value="${d.name}">
-    <label>Servings it makes</label><input id="rserv" type="number" value="${d.servings}">
-    <div class="row" style="margin-top:8px"><input id="rq" placeholder="Search ingredient…">
-      <button class="ghost" id="rgo">Search</button></div>
-    ${(d.results || []).map((f, i) => `<div class="result"><div>${f.label}<small class="muted"> ${Math.round(f.per100g.kcal)} kcal/100g</small></div>
+  return `<h3 style="margin-top:12px">${t('New recipe')}</h3>
+    <input id="rname" placeholder="${t('Recipe name')}" value="${d.name}">
+    <label>${t('Servings it makes')}</label><input id="rserv" type="number" value="${d.servings}">
+    <div class="row" style="margin-top:8px"><input id="rq" placeholder="${t('Search ingredient…')}">
+      <button class="ghost" id="rgo">${t('Search')}</button></div>
+    ${(d.results || []).map((f, i) => `<div class="result"><div>${f.label}<small class="muted"> ${t('{kcal} kcal/100g', { kcal: Math.round(f.per100g.kcal) })}</small></div>
       <input type="number" placeholder="g" data-ring-g="${i}" style="width:70px">
-      <button class="ghost" data-ringadd="${i}">Add</button></div>`).join('')}
-    ${d.ingredients.length ? `<h3 style="margin-top:10px">Ingredients</h3>` : ''}
+      <button class="ghost" data-ringadd="${i}">${t('Add')}</button></div>`).join('')}
+    ${d.ingredients.length ? `<h3 style="margin-top:10px">${t('Ingredients')}</h3>` : ''}
     ${d.ingredients.map((ing, i) => `<div class="entry"><div>${ing.label} <small>${ing.grams} g</small></div>
       <button class="del" data-ringdel="${i}">×</button></div>`).join('')}
-    <button class="ghost" id="rsave" style="margin-top:10px">Save recipe</button>`;
+    <button class="ghost" id="rsave" style="margin-top:10px">${t('Save recipe')}</button>`;
 }
 
 function wireRecipeTab(el) {
   const q = (sel) => el.querySelector(sel);
   const recnew = q('#recnew');
-  if (recnew) recnew.onclick = () => { sheet.recipeDraft = { name: '', servings: 4, results: [], ingredients: [] }; renderSheet(); };
+  if (recnew) recnew.onclick = () => { sheet.recipeDraft = { name: '', servings: 4, results: [], ingredients: [] }; renderPickerStable(); };
   el.querySelectorAll('[data-recadd]').forEach((b) => (b.onclick = async () => {
     const r = await ctx.db.get('recipes', +b.dataset.recadd);
     const qty = +el.querySelector(`[data-recqty="${r.id}"]`).value || 0;
@@ -636,7 +757,7 @@ function wireRecipeTab(el) {
   if (rgo) rgo.onclick = async () => {
     keep();
     d.results = (await searchFoodSources(q('#rq').value.trim())).foods;
-    renderSheet();
+    renderPickerStable();
   };
   el.querySelectorAll('[data-ringadd]').forEach((b) => (b.onclick = () => {
     keep();
@@ -645,9 +766,9 @@ function wireRecipeTab(el) {
     if (!grams) return;
     const f = d.results[i];
     d.ingredients.push({ label: f.label, grams, per100g: f.per100g });
-    renderSheet();
+    renderPickerStable();
   }));
-  el.querySelectorAll('[data-ringdel]').forEach((b) => (b.onclick = () => { keep(); d.ingredients.splice(+b.dataset.ringdel, 1); renderSheet(); }));
+  el.querySelectorAll('[data-ringdel]').forEach((b) => (b.onclick = () => { keep(); d.ingredients.splice(+b.dataset.ringdel, 1); renderPickerStable(); }));
   const rsave = q('#rsave');
   if (rsave) rsave.onclick = async () => {
     keep();
@@ -662,7 +783,7 @@ function wireRecipeTab(el) {
       perServing: { kcal: tot.kcal / n, p: tot.p / n, c: tot.c / n, f: tot.f / n },
     });
     sheet.recipeDraft = null;
-    renderSheet();
+    renderPickerStable();
   };
 }
 
@@ -671,26 +792,26 @@ function wireRecipeTab(el) {
 async function startBarcodeScan(el) {
   const box = el.querySelector('#scanbox');
   box.innerHTML = `<video class="scanner" playsinline muted></video>
-    <button class="ghost" id="scanstop" style="margin-top:6px">Stop</button>
-    <p class="muted" id="scanmsg">Point the camera at a barcode…</p>`;
+    <button class="ghost" id="scanstop" style="margin-top:6px">${t('Stop')}</button>
+    <p class="muted" id="scanmsg">${t('Point the camera at a barcode…')}</p>`;
   const video = box.querySelector('video');
   el.querySelector('#scanstop').onclick = () => { stopScan(); box.innerHTML = ''; };
   try {
     await startScan(video, async (code) => {
       stopScan();
-      box.querySelector('#scanmsg').textContent = `Looking up ${code}…`;
+      box.querySelector('#scanmsg').textContent = t('Looking up {code}…', { code });
       const custom = customFoodForBarcode(await ctx.db.getAll('foods'), code);
       const food = custom ?? (await ctx.db.get('foodcache', 'off:' + code)) ?? await lookupBarcode(code);
       if (!food) {
-        box.querySelector('#scanmsg').textContent = `No product found for ${code}.`;
+        box.querySelector('#scanmsg').textContent = t('No product found for {code}.', { code });
         return;
       }
       const hydrated = food.source === 'usda' ? await hydrateUsdaFood(food, settings.usdaApiKey) : food;
       const servings = normalizeServings(hydrated);
       sheet.picked = { food: hydrated, servingIdx: servings.length > 1 ? 1 : 0, qty: 1 };
-      renderSheetStable();
+      renderPickerStable();
     });
   } catch (e) {
-    box.innerHTML = `<p class="msg">${scanErrorMessage(e)}</p>`;
+    box.innerHTML = `<p class="msg">${t(scanErrorMessage(e))}</p>`;
   }
 }

@@ -1,6 +1,7 @@
 import { prescribe, editMacro, ageFromBirthdate, ACTIVITY, ACTIVITY_LABELS } from '../engine/prescribe.js';
 import { lbToKg, kgToLb, ftInToCm, cmToFtIn } from '../units.js';
 import { dstr } from '../util.js';
+import { t, langChip, wireLangChip } from '../i18n.js';
 
 const s = {
   units: 'imperial', sex: 'm', birthdate: '1990-01-01', activity: 'moderate',
@@ -25,28 +26,30 @@ const seg = (name, opts, cur) =>
 
 function render() {
   const steps = [profile, goal, style, review];
-  root.innerHTML = `<div class="wizard"><p class="stepnum">Step ${step + 1} of 4</p>${steps[step]()}</div>`;
+  root.innerHTML = `<div class="wizard">
+    <div class="spread"><p class="stepnum" style="margin:0">${t('Step {n} of 4', { n: step + 1 })}</p>${langChip()}</div>
+    ${steps[step]()}</div>`;
   wire();
 }
 
 function profile() {
   const imp = s.units === 'imperial';
   const { ft, in: inch } = cmToFtIn(s.heightCm);
-  return `<div class="card"><h1>Welcome to MacroCoach</h1>
-  <label>Units</label>${seg('units', [['imperial', 'lb + ft/in'], ['metric', 'kg + cm']], s.units)}
-  <label>Sex</label>${seg('sex', [['m', 'Male'], ['f', 'Female']], s.sex)}
-  <label>Birthdate</label><input type="date" id="birth" value="${s.birthdate}">
-  <label>Height</label>${imp
-    ? `<div class="row"><input type="number" id="hft" value="${ft}" min="3" max="7"> <input type="number" id="hin" value="${inch}" min="0" max="11"></div><p class="hint">feet / inches</p>`
+  return `<div class="card"><h1>${t('Welcome to MacroCoach')}</h1>
+  <label>${t('Units')}</label>${seg('units', [['imperial', 'lb + ft/in'], ['metric', 'kg + cm']], s.units)}
+  <label>${t('Sex')}</label>${seg('sex', [['m', t('Male')], ['f', t('Female')]], s.sex)}
+  <label>${t('Birthdate')}</label><input type="date" id="birth" value="${s.birthdate}">
+  <label>${t('Height')}</label>${imp
+    ? `<div class="row"><input type="number" id="hft" value="${ft}" min="3" max="7"> <input type="number" id="hin" value="${inch}" min="0" max="11"></div><p class="hint">${t('feet / inches')}</p>`
     : `<input type="number" id="hcm" value="${Math.round(s.heightCm)}" min="120" max="230"><p class="hint">cm</p>`}
-  <label>Current weight (${imp ? 'lb' : 'kg'})</label>
+  <label>${t('Current weight ({u})', { u: imp ? 'lb' : 'kg' })}</label>
   <input type="number" id="wt" step="0.1" value="${imp ? +kgToLb(s.weightKg).toFixed(1) : s.weightKg}">
-  <label>Body fat % (optional — improves the calorie estimate)</label>
-  <input type="number" id="bf" step="0.5" value="${s.bodyFatPct ?? ''}" placeholder="skip if unsure">
-  <label>Activity level (outside workouts)</label>
+  <label>${t('Body fat % (optional — improves the calorie estimate)')}</label>
+  <input type="number" id="bf" step="0.5" value="${s.bodyFatPct ?? ''}" placeholder="${t('skip if unsure')}">
+  <label>${t('Activity level (outside workouts)')}</label>
   <select id="act">${Object.keys(ACTIVITY).map((k) =>
-    `<option value="${k}" ${k === s.activity ? 'selected' : ''}>${ACTIVITY_LABELS[k]}</option>`).join('')}</select>
-  <button class="primary" data-next>Next</button></div>`;
+    `<option value="${k}" ${k === s.activity ? 'selected' : ''}>${t(ACTIVITY_LABELS[k])}</option>`).join('')}</select>
+  <button class="primary" data-next>${t('Next')}</button></div>`;
 }
 
 function goal() {
@@ -54,38 +57,38 @@ function goal() {
   const unit = imp ? 'lb' : 'kg';
   const b = RATE_BOUNDS[s.units][s.goalType];
   const rateDisp = imp ? +kgToLb(s.rateKgPerWeek).toFixed(2) : s.rateKgPerWeek;
-  return `<div class="card"><h2>Your goal</h2>
-  ${seg('goalType', [['lose', 'Lose'], ['maintain', 'Maintain'], ['gain', 'Gain'], ['reverse', 'Reverse']], s.goalType)}
-  ${b ? `<label>Rate: <span id="ratev">${clampDisp(rateDisp, b)}</span> ${unit}/week</label>
+  return `<div class="card"><h2>${t('Your goal')}</h2>
+  ${seg('goalType', [['lose', t('Lose')], ['maintain', t('Maintain')], ['gain', t('Gain')], ['reverse', t('Reverse')]], s.goalType)}
+  ${b ? `<label>${t('Rate:')} <span id="ratev">${clampDisp(rateDisp, b)}</span> ${t('{u}/week', { u: unit })}</label>
     <input type="range" id="rate" min="${b[0]}" max="${b[1]}" step="${b[2]}" value="${clampDisp(rateDisp, b)}">` : ''}
-  <label>Goal weight (${unit}${s.goalType === 'reverse' ? '' : ', optional'})</label>
+  <label>${s.goalType === 'reverse' ? t('Goal weight ({u})', { u: unit }) : t('Goal weight ({u}, optional)', { u: unit })}</label>
   <input type="number" id="gw" step="0.1" value="${s.goalWeightKg ? (imp ? +kgToLb(s.goalWeightKg).toFixed(1) : s.goalWeightKg) : ''}">
-  ${s.goalType === 'reverse' ? `<p class="hint">Start at estimated maintenance; calories climb week by week while weight stays stable.</p>` : ''}
-  <button class="primary" data-next>Next</button></div>`;
+  ${s.goalType === 'reverse' ? `<p class="hint">${t('Start at estimated maintenance; calories climb week by week while weight stays stable.')}</p>` : ''}
+  <button class="primary" data-next>${t('Next')}</button></div>`;
 }
 const clampDisp = (v, b) => Math.min(Math.max(v, b[0]), b[1]);
 
 function style() {
-  return `<div class="card"><h2>Diet style</h2>
-  ${seg('dietStyle', [['balanced', 'Balanced'], ['lowfat', 'Low-fat'], ['lowcarb', 'Low-carb'], ['keto', 'Keto']], s.dietStyle)}
-  <label><input type="checkbox" id="plant" ${s.plantBased ? 'checked' : ''}> Plant-based (protein 1.8 g/kg)</label>
-  <button class="primary" data-next>Next</button></div>`;
+  return `<div class="card"><h2>${t('Diet style')}</h2>
+  ${seg('dietStyle', [['balanced', t('Balanced')], ['lowfat', t('Low-fat')], ['lowcarb', t('Low-carb')], ['keto', t('Keto')]], s.dietStyle)}
+  <label><input type="checkbox" id="plant" ${s.plantBased ? 'checked' : ''}> ${t('Plant-based (protein 1.8 g/kg)')}</label>
+  <button class="primary" data-next>${t('Next')}</button></div>`;
 }
 
 function review() {
   s.targets ??= computeTargets();
-  const t = s.targets;
-  return `<div class="card"><h2>Your daily targets</h2>
-  <p class="muted">Tweak grams if you like — calories stay fixed; the other macros rebalance.</p>
-  <div class="spread"><b>${t.kcal} kcal</b><span class="muted">est. TDEE ${t.tdee}</span></div>
-  <label>Protein (g)</label><input type="number" id="mp" data-macro="proteinG" value="${t.proteinG}">
-  <label>Carbs (g)</label><input type="number" id="mc" data-macro="carbG" value="${t.carbG}">
-  <label>Fat (g)</label><input type="number" id="mf" data-macro="fatG" value="${t.fatG}">
-  <label>Weekly check-in day</label>
+  const tg = s.targets;
+  return `<div class="card"><h2>${t('Your daily targets')}</h2>
+  <p class="muted">${t('Tweak grams if you like — calories stay fixed; the other macros rebalance.')}</p>
+  <div class="spread"><b>${tg.kcal} kcal</b><span class="muted">${t('est. TDEE {n}', { n: tg.tdee })}</span></div>
+  <label>${t('Protein (g)')}</label><input type="number" id="mp" data-macro="proteinG" value="${tg.proteinG}">
+  <label>${t('Carbs (g)')}</label><input type="number" id="mc" data-macro="carbG" value="${tg.carbG}">
+  <label>${t('Fat (g)')}</label><input type="number" id="mf" data-macro="fatG" value="${tg.fatG}">
+  <label>${t('Weekly check-in day')}</label>
   <select id="ciday">${['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday']
-    .map((d, i) => `<option value="${i}" ${i === 0 ? 'selected' : ''}>${d}</option>`).join('')}</select>
-  <p class="msg" id="clampmsg" hidden>Adjusted to stay within safe ranges.</p>
-  <button class="primary" data-finish>Start coaching</button></div>`;
+    .map((d, i) => `<option value="${i}" ${i === 0 ? 'selected' : ''}>${t(d)}</option>`).join('')}</select>
+  <p class="msg" id="clampmsg" hidden>${t('Adjusted to stay within safe ranges.')}</p>
+  <button class="primary" data-finish>${t('Start coaching')}</button></div>`;
 }
 
 function computeTargets() {
@@ -121,6 +124,7 @@ function collect() {
 }
 
 function wire() {
+  wireLangChip(root, () => { collectSafe(); render(); });
   root.querySelectorAll('[data-seg]').forEach((el) => {
     el.onclick = (e) => {
       const b = e.target.closest('button'); if (!b) return;
