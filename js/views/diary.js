@@ -5,7 +5,7 @@ import { normalizeServings, portionPreview, servingIndexForEntry, entryFromPorti
 import { buildCustomFood, customFoodForBarcode, normalizeBarcode } from '../food/custom.js';
 import { lookupBarcode, searchFoodsPage } from '../food/off.js';
 import { searchUsdaPage, hydrateUsdaFood } from '../food/usda.js';
-import { startScan, stopScan, scanErrorMessage } from '../food/barcode.js';
+import { startScan, stopScan, scanErrorMessage, applyCameraEnhancements, canUseTorch } from '../food/barcode.js';
 import { ensureEntryIds, updateLogEntry, withEntryId } from '../food/log-entry.js';
 import { turkishQueryToEnglish } from '../food/translate.js';
 import { enFoodToTr } from '../food/tr-foods.js';
@@ -815,24 +815,64 @@ function wireRecipeTab(el) {
 async function startBarcodeScan(el) {
   const box = el.querySelector('#scanbox');
   box.innerHTML = `<video class="scanner" playsinline muted></video>
-    <button class="ghost" id="scanstop" style="margin-top:6px">${t('Stop')}</button>
-    <p class="muted" id="scanmsg">${t('Point the camera at a barcode…')}</p>`;
+    <div class="row" style="margin-top:6px">
+      <button class="ghost" id="scanstop">${t('Stop')}</button>
+      <button class="ghost" id="scantorch" hidden>${t('Light')}</button>
+    </div>
+    <p class="muted" id="scanmsg">${t('Point the camera at a barcode…')}</p>
+    <div class="row" style="margin-top:6px">
+      <input id="manualbarcode" inputmode="numeric" autocomplete="off" placeholder="${t('Enter barcode')}">
+      <button class="ghost" id="lookupManualBarcode">${t('Lookup')}</button>
+    </div>`;
   const video = box.querySelector('video');
   el.querySelector('#scanstop').onclick = () => { stopScan(); box.innerHTML = ''; };
+  const lookupManualBarcode = async () => {
+    const input = box.querySelector('#manualbarcode');
+    await handleBarcodeCode(box, input?.value);
+  };
+  box.querySelector('#lookupManualBarcode').onclick = lookupManualBarcode;
+  box.querySelector('#manualbarcode').onkeydown = (e) => {
+    if (e.key !== 'Enter') return;
+    e.preventDefault();
+    lookupManualBarcode();
+  };
   try {
     await startScan(video, async (code) => {
       stopScan();
-      box.querySelector('#scanmsg').textContent = t('Looking up {code}…', { code });
-      const custom = customFoodForBarcode(await ctx.db.getAll('foods'), code);
-      const food = custom ?? (await ctx.db.get('foodcache', 'off:' + code)) ?? await lookupBarcode(code);
-      if (!food) {
-        box.querySelector('#scanmsg').textContent = t('No product found for {code}.', { code });
-        return;
-      }
-      const hydrated = food.source === 'usda' ? await hydrateUsdaFood(food, settings.usdaApiKey) : food;
-      selectFood(hydrated);
+      await handleBarcodeCode(box, code);
     });
+    await applyCameraEnhancements(video);
+    const torch = box.querySelector('#scantorch');
+    if (canUseTorch(video)) {
+      torch.hidden = false;
+      let torchOn = false;
+      torch.onclick = async () => {
+        torchOn = !torchOn;
+        await applyCameraEnhancements(video, { torch: torchOn });
+        torch.classList.toggle('on', torchOn);
+      };
+    }
   } catch (e) {
-    box.innerHTML = `<p class="msg">${t(scanErrorMessage(e))}</p>`;
+    video.remove();
+    box.querySelector('#scanmsg').textContent = t(scanErrorMessage(e));
   }
+}
+
+async function handleBarcodeCode(box, code) {
+  const clean = normalizeBarcode(code);
+  const msg = box.querySelector('#scanmsg');
+  if (!clean) {
+    msg.textContent = t('Enter a valid barcode.');
+    return;
+  }
+  stopScan();
+  msg.textContent = t('Looking up {code}…', { code: clean });
+  const custom = customFoodForBarcode(await ctx.db.getAll('foods'), clean);
+  const food = custom ?? (await ctx.db.get('foodcache', 'off:' + clean)) ?? await lookupBarcode(clean);
+  if (!food) {
+    msg.textContent = t('No product found for {code}.', { code: clean });
+    return;
+  }
+  const hydrated = food.source === 'usda' ? await hydrateUsdaFood(food, settings.usdaApiKey) : food;
+  selectFood(hydrated);
 }

@@ -55,6 +55,14 @@ test('food row selection renders the food page directly', async () => {
   assert.match(diary, /selectFood\(hydrated\);/);
 });
 
+test('barcode scanner includes manual entry fallback and shared lookup flow', async () => {
+  const diary = await readFile(new URL('../js/views/diary.js', import.meta.url), 'utf8');
+  assert.match(diary, /id="manualbarcode"/);
+  assert.match(diary, /inputmode="numeric"/);
+  assert.match(diary, /handleBarcodeCode\(box, code\)/);
+  assert.match(diary, /lookupManualBarcode/);
+});
+
 test('service worker supports forced activation and network-first navigations', async () => {
   const sw = await readFile(new URL('../sw.js', import.meta.url), 'utf8');
   assert.match(sw, /message/);

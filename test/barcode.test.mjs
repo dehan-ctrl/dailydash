@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
-import { scanErrorMessage } from '../js/food/barcode.js';
+import { buildCameraEnhancementConstraints, scanErrorMessage } from '../js/food/barcode.js';
 
 test('scanErrorMessage maps camera errors to helpful text', () => {
   assert.match(scanErrorMessage({ name: 'NotAllowedError' }), /permission/i);
@@ -17,4 +17,24 @@ test('scanner uses facingMode constraints, not device enumeration', async () => 
   assert.match(src, /facingMode/);
   assert.match(src, /TRY_HARDER/);
   assert.doesNotMatch(src, /listVideoInputDevices/);
+});
+
+test('camera enhancements request supported focus, zoom, and torch constraints', () => {
+  const constraints = buildCameraEnhancementConstraints({
+    focusMode: ['manual', 'continuous'],
+    zoom: { min: 1, max: 4 },
+    torch: true,
+  }, { torch: true });
+
+  assert.deepEqual(constraints, {
+    advanced: [
+      { focusMode: 'continuous' },
+      { zoom: 2 },
+      { torch: true },
+    ],
+  });
+});
+
+test('camera enhancements skip unsupported capabilities', () => {
+  assert.equal(buildCameraEnhancementConstraints({}, { torch: true }), null);
 });

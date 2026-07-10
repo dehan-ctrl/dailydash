@@ -27,6 +27,41 @@ export async function startScan(video, onCode) {
   });
 }
 
+export function buildCameraEnhancementConstraints(capabilities = {}, options = {}) {
+  const { torch = false } = options;
+  const advanced = [];
+  if (Array.isArray(capabilities.focusMode) && capabilities.focusMode.includes('continuous')) {
+    advanced.push({ focusMode: 'continuous' });
+  }
+  if (capabilities.zoom) {
+    const min = Number.isFinite(capabilities.zoom.min) ? capabilities.zoom.min : 1;
+    const max = Number.isFinite(capabilities.zoom.max) ? capabilities.zoom.max : min;
+    const zoom = Math.min(max, Math.max(min, 2));
+    if (zoom > min) advanced.push({ zoom });
+  }
+  if ('torch' in options && capabilities.torch) advanced.push({ torch: !!torch });
+  return advanced.length ? { advanced } : null;
+}
+
+export async function applyCameraEnhancements(video, options = {}) {
+  const track = video?.srcObject?.getVideoTracks?.()[0];
+  if (!track?.getCapabilities || !track?.applyConstraints) return false;
+  const constraints = buildCameraEnhancementConstraints(track.getCapabilities(), options);
+  if (!constraints) return false;
+  try {
+    await track.applyConstraints(constraints);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export function canUseTorch(video) {
+  const track = video?.srcObject?.getVideoTracks?.()[0];
+  const capabilities = track?.getCapabilities?.();
+  return !!capabilities?.torch;
+}
+
 export function scanErrorMessage(e) {
   if (e?.name === 'NotAllowedError') {
     return 'Camera permission was denied. Allow camera access for MacroCoach in Settings and try again.';

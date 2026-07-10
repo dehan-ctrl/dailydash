@@ -129,6 +129,8 @@ export const TR = {
 
   /* barcode scanning */
   'Point the camera at a barcode…': 'Kamerayı barkoda doğrultun…', 'Stop': 'Durdur',
+  'Light': 'Işık', 'Enter barcode': 'Barkod girin', 'Lookup': 'Ara',
+  'Enter a valid barcode.': 'Geçerli bir barkod girin.',
   'Looking up {code}…': '{code} aranıyor…',
   'No product found for {code}.': '{code} için ürün bulunamadı.',
   'Scanner library not loaded.': 'Tarayıcı kitaplığı yüklenemedi.',
