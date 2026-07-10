@@ -461,11 +461,7 @@ function wirePicker() {
     (b.onclick = async () => {
       const food = sheet.results[+b.dataset.open];
       const hydrated = food?.source === 'usda' ? await hydrateUsdaFood(food, settings.usdaApiKey) : food;
-      const servings = normalizeServings(hydrated);
-      pickerRenderSeq += 1;
-      sheet.picked = { food: hydrated, servingIdx: servings.length > 1 ? 1 : 0, qty: 1 };
-      sheet.editing = false;
-      renderPickerStable();
+      selectFood(hydrated);
     }));
 
   /* my foods: subforms */
@@ -503,6 +499,14 @@ function wirePicker() {
     kcal: +q('#qk').value || 0, p: +q('#qp').value || 0, c: +q('#qc').value || 0, f: +q('#qf').value || 0,
   });
   wireRecipeTab(root);
+}
+
+function selectFood(hydrated) {
+  const servings = normalizeServings(hydrated);
+  pickerRenderSeq += 1;
+  sheet.picked = { food: hydrated, servingIdx: servings.length > 1 ? 1 : 0, qty: 1 };
+  sheet.editing = false;
+  renderFoodPage();
 }
 
 /* Re-render just the picker list while typing (keeps the input focused). */
@@ -826,9 +830,7 @@ async function startBarcodeScan(el) {
         return;
       }
       const hydrated = food.source === 'usda' ? await hydrateUsdaFood(food, settings.usdaApiKey) : food;
-      const servings = normalizeServings(hydrated);
-      sheet.picked = { food: hydrated, servingIdx: servings.length > 1 ? 1 : 0, qty: 1 };
-      renderPickerStable();
+      selectFood(hydrated);
     });
   } catch (e) {
     box.innerHTML = `<p class="msg">${t(scanErrorMessage(e))}</p>`;

@@ -49,6 +49,12 @@ test('food picker invalidates stale renders after a food is picked', async () =>
   assert.match(diary, /pickerRenderSeq \+= 1;[\s\S]*sheet\.picked =/);
 });
 
+test('food row selection renders the food page directly', async () => {
+  const diary = await readFile(new URL('../js/views/diary.js', import.meta.url), 'utf8');
+  assert.match(diary, /function selectFood\(hydrated\)[\s\S]*renderFoodPage\(\);/);
+  assert.match(diary, /selectFood\(hydrated\);/);
+});
+
 test('service worker supports forced activation and network-first navigations', async () => {
   const sw = await readFile(new URL('../sw.js', import.meta.url), 'utf8');
   assert.match(sw, /message/);
