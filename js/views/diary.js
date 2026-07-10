@@ -6,9 +6,11 @@ import { buildCustomFood, customFoodForBarcode, normalizeBarcode } from '../food
 import { lookupBarcode, searchFoodsPage } from '../food/off.js';
 import { searchUsdaPage, hydrateUsdaFood } from '../food/usda.js';
 import { startScan, stopScan, scanErrorMessage } from '../food/barcode.js';
+import { ensureEntryIds, updateLogEntry, withEntryId } from '../food/log-entry.js';
 import { turkishQueryToEnglish } from '../food/translate.js';
 import { enFoodToTr } from '../food/tr-foods.js';
 import { t, getLang, locale, langChip, wireLangChip } from '../i18n.js';
+import { createPickerState } from './diary-state.js';
 
 // Food names come from USDA/OFF in English; show them in Turkish when the
 // UI is Turkish (stored data stays canonical English).
@@ -80,6 +82,7 @@ async function render() {
   document.body.classList.toggle('picker-open', !!sheet);
   if (sheet) return renderPicker();
   const log = (await ctx.db.get('logs', date)) ?? blankLog();
+  if (ensureEntryIds(log)) await ctx.db.put('logs', log);
   const target = await dayTargetFor(ctx.db, date);
   const tt = sumEntries(log.meals.flatMap((m) => m.entries));
   root.innerHTML = `
@@ -115,7 +118,7 @@ function entryPortionLabel(e) {
 function entryMain(e, meal, index) {
   const content = `<span>${tFood(e.label)}</span><small>${entryPortionLabel(e)} · P ${e.p} C ${e.c} F ${e.f}</small>`;
   return canEditEntry(e)
-    ? `<button class="entryopen" data-entry="${meal}:${index}">${content}</button>`
+    ? `<button class="entryopen" data-entry="${meal}:${index}" data-entry-id="${e.entryId || ''}">${content}</button>`
     : `<div class="entrytext">${content}</div>`;
 }
 
@@ -146,17 +149,13 @@ async function save(log) { await ctx.db.put('logs', log); render(); }
 /* ---------- full-page food picker ---------- */
 
 function openPicker(meal) {
-  sheet = {
-    meal, tab: 'recent', q: '', searchPage: 1, hasMore: false, results: [], searching: false,
-    locals: null, picked: null, editEntry: null, editing: false, subform: null, recipeDraft: null,
-    msg: '', scanning: false, searchMode: false,
-  };
+  sheet = createPickerState(meal);
   render();
 }
 
 async function addEntry(entry) {
   const log = (await ctx.db.get('logs', date)) ?? blankLog();
-  log.meals[sheet.meal].entries.push(entry);
+  log.meals[sheet.meal].entries.push(withEntryId(entry));
   await ctx.db.put('logs', log);
   sheet = null;
   render();
@@ -166,18 +165,15 @@ async function updateEntry(entry) {
   const log = (await ctx.db.get('logs', date)) ?? blankLog();
   const target = sheet.editEntry;
   if (!target) return;
-  if (sheet.meal === target.meal) {
-    log.meals[target.meal].entries[target.index] = entry;
-  } else { // meal changed in the dropdown → move the entry
-    log.meals[target.meal].entries.splice(target.index, 1);
-    log.meals[sheet.meal].entries.push(entry);
-  }
+  ensureEntryIds(log);
+  updateLogEntry(log, target, entry, sheet.meal);
   await ctx.db.put('logs', log);
   sheet = null;
   render();
 }
 
 async function openEntryEditor(log, meal, index) {
+  if (ensureEntryIds(log)) await ctx.db.put('logs', log);
   const entry = log.meals[meal]?.entries[index];
   if (!canEditEntry(entry)) return;
   const food = await foodForEntry(entry);
@@ -185,9 +181,10 @@ async function openEntryEditor(log, meal, index) {
     alert(t('This food is no longer in your saved foods. Search or scan it again to edit its servings.'));
     return;
   }
-  openPicker(meal);
-  sheet.picked = { food, servingIdx: servingIndexForEntry(food, entry), qty: entry.qty || 1 };
-  sheet.editEntry = { meal, index };
+  sheet = createPickerState(meal, {
+    picked: { food, servingIdx: servingIndexForEntry(food, entry), qty: entry.qty || 1 },
+    editEntry: { meal, index, entryId: entry.entryId },
+  });
   render();
 }
 
@@ -296,8 +293,12 @@ const mealSelect = () => `<select id="mealpick" class="mealpick">${MEALS.map((m,
   `<option value="${i}" ${i === sheet.meal ? 'selected' : ''}>${t(m)}</option>`).join('')}</select>`;
 
 async function renderPicker() {
+  const renderSeq = ++pickerRenderSeq;
   if (sheet.picked) return renderFoodPage();
-  const { cached, customs } = await localFoods();
+  const localsData = await localFoods();
+  if (renderSeq !== pickerRenderSeq) return;
+  if (sheet.picked) return renderFoodPage();
+  const { cached, customs } = localsData;
   const favs = {};
   for (const c of cached) if (c.fav) favs[c.id] = true;
 
@@ -339,17 +340,23 @@ async function renderPicker() {
         : `<p class="muted">${t('Foods you create will appear here.')}</p>`}`;
   } else {
     body = renderRecipeTab(await ctx.db.getAll('recipes'));
+    if (renderSeq !== pickerRenderSeq) return;
+    if (sheet.picked) return renderFoodPage();
   }
+
+  if (renderSeq !== pickerRenderSeq) return;
+  if (sheet.picked) return renderFoodPage();
 
   root.innerHTML = `<div class="picker">
     <div class="pickerhead">
       ${sheet.searchMode ? '' : `<button class="ghost iconbtn" id="pickerback">‹</button>`}
       ${sheet.searchMode ? '' : mealSelect()}
-      <div class="searchbar" style="flex:1">
+      <form class="searchbar" id="foodsearch" style="flex:1" role="search">
         <span aria-hidden="true">🔍</span>
-        <input id="q" placeholder="${t('Search')}" value="${sheet.q}" autocomplete="off">
-        <button class="scanicon" id="scan" aria-label="${t('📷 Scan')}">▦</button>
-      </div>
+        <input id="q" type="search" enterkeyhint="search" placeholder="${t('Search')}" value="${sheet.q}" autocomplete="off" autocapitalize="none" spellcheck="false">
+        <button class="scanicon searchgo" id="gosearch" type="submit" aria-label="${t('Search')}">↵</button>
+        <button class="scanicon" id="scan" type="button" aria-label="${t('📷 Scan')}">▦</button>
+      </form>
       ${sheet.searchMode ? `<button class="ghost" id="cancelsearch">${t('Cancel')}</button>` : ''}
     </div>
     <div id="scanbox"></div>
@@ -381,7 +388,7 @@ function quickAddForm() {
     <button class="ghost" id="qadd" style="margin-top:8px">${t('Add')}</button></div>`;
 }
 
-let searchTimer = null;
+let searchTimer = null, pickerRenderSeq = 0;
 async function runOnlineSearch(append = false) {
   if (!sheet) return; // debounce timer can outlive the picker
   const query = sheet.q.trim();
@@ -392,8 +399,9 @@ async function runOnlineSearch(append = false) {
   renderPickerStable();
   try {
     const { foods, msg, hasMore } = await searchFoodSources(query, sheet.searchPage);
-    if (!sheet || sheet.q.trim() !== query) return; // picker closed or stale response
+    if (!sheet || sheet.picked || sheet.q.trim() !== query) return; // picker closed, selected, or stale response
     const hydrated = await Promise.all(foods.map(async (f) => (await ctx.db.get('foodcache', f.id)) ?? f));
+    if (!sheet || sheet.picked || sheet.q.trim() !== query) return;
     sheet.online = append ? mergeFoods(sheet.online || [], hydrated) : hydrated;
     sheet.hasMore = hasMore;
     sheet.msg = msg;
@@ -402,7 +410,7 @@ async function runOnlineSearch(append = false) {
     sheet.hasMore = false;
     sheet.msg = { type: 'error', text: t('Food search is temporarily unavailable: {message}', { message: e.message }) };
   } finally {
-    if (sheet) { sheet.searching = false; renderPickerStable(); }
+    if (sheet && !sheet.picked) { sheet.searching = false; renderPickerStable(); }
   }
 }
 
@@ -415,24 +423,29 @@ function wirePicker() {
   root.querySelectorAll('[data-tab]').forEach((b) =>
     (b.onclick = () => { sheet.tab = b.dataset.tab; sheet.subform = null; renderPickerStable(); }));
 
-  /* search field: entering it switches to search mode; typing filters live */
+  const submitSearch = () => {
+    clearTimeout(searchTimer);
+    const input = q('#q');
+    if (input) sheet.q = input.value;
+    sheet.searchMode = true;
+    sheet.online = [];
+    sheet.msg = '';
+    sheet.hasMore = false;
+    renderPickerStable().then(() => runOnlineSearch(false));
+  };
+
+  /* search field: submit explicitly so mobile keyboards are not dismissed by
+     a full picker remount after every keystroke. */
   const input = q('#q');
   if (input) {
-    input.onfocus = () => {
-      if (!sheet.searchMode) { sheet.searchMode = true; renderPickerStable().then(() => root.querySelector('#q')?.focus()); }
-    };
     input.oninput = () => {
       sheet.q = input.value;
       clearTimeout(searchTimer);
-      if (sheet.q.trim().length >= 2) {
-        searchTimer = setTimeout(() => runOnlineSearch(false), 600);
-      } else {
-        sheet.online = []; sheet.msg = ''; sheet.hasMore = false;
-      }
-      renderListOnly();
+      if (sheet.q.trim().length < 2) { sheet.online = []; sheet.msg = ''; sheet.hasMore = false; }
     };
-    input.onkeydown = (e) => { if (e.key === 'Enter') { clearTimeout(searchTimer); runOnlineSearch(false); input.blur(); } };
   }
+  const searchForm = q('#foodsearch');
+  if (searchForm) searchForm.onsubmit = (e) => { e.preventDefault(); submitSearch(); };
   const cancel = q('#cancelsearch');
   if (cancel) cancel.onclick = () => {
     clearTimeout(searchTimer);
@@ -449,6 +462,7 @@ function wirePicker() {
       const food = sheet.results[+b.dataset.open];
       const hydrated = food?.source === 'usda' ? await hydrateUsdaFood(food, settings.usdaApiKey) : food;
       const servings = normalizeServings(hydrated);
+      pickerRenderSeq += 1;
       sheet.picked = { food: hydrated, servingIdx: servings.length > 1 ? 1 : 0, qty: 1 };
       sheet.editing = false;
       renderPickerStable();

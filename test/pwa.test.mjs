@@ -28,6 +28,27 @@ test('layout is pinned against iOS keyboard viewport drift', async () => {
   assert.match(app, /picker-open/); // pull-to-refresh must not eject the picker
 });
 
+test('food search typing does not blur or remount on keystrokes', async () => {
+  const diary = await readFile(new URL('../js/views/diary.js', import.meta.url), 'utf8');
+  assert.match(diary, /<form class="searchbar"/);
+  assert.match(diary, /type="search"/);
+  assert.doesNotMatch(diary, /input\.blur\(\)/);
+  assert.doesNotMatch(diary, /input\.onkeydown/);
+});
+
+test('food picker rechecks selected food after async local food load', async () => {
+  const diary = await readFile(new URL('../js/views/diary.js', import.meta.url), 'utf8');
+  assert.match(diary, /const localsData = await localFoods\(\);[\s\S]*if \(sheet\.picked\) return renderFoodPage\(\);/);
+});
+
+test('food picker invalidates stale renders after a food is picked', async () => {
+  const diary = await readFile(new URL('../js/views/diary.js', import.meta.url), 'utf8');
+  assert.match(diary, /let searchTimer = null, pickerRenderSeq = 0;/);
+  assert.match(diary, /const renderSeq = \+\+pickerRenderSeq;/);
+  assert.match(diary, /if \(renderSeq !== pickerRenderSeq\) return;/);
+  assert.match(diary, /pickerRenderSeq \+= 1;[\s\S]*sheet\.picked =/);
+});
+
 test('service worker supports forced activation and network-first navigations', async () => {
   const sw = await readFile(new URL('../sw.js', import.meta.url), 'utf8');
   assert.match(sw, /message/);
