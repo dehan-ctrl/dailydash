@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { rmrMifflin, rmrKatch, rmr, leanMassKg, clampRateKg, prescribe, editMacro, kcalFloor, ageFromBirthdate } from '../js/engine/prescribe.js';
+import { rmrMifflin, rmrKatch, rmr, leanMassKg, clampRateKg, prescribe, editMacro, fatBounds, kcalFloor, ageFromBirthdate } from '../js/engine/prescribe.js';
 
 const guy = { sex: 'm', weightKg: 90, heightCm: 180, age: 35, activity: 'moderate' };
 
@@ -78,4 +78,12 @@ test('weekly rate is clamped to safety rails', () => {
   assert.equal(clampRateKg({ type: 'gain', rateKgPerWeek: 1.0 }, 90), 0.45);
   const t = prescribe({ ...guy, goal: { type: 'lose', rateKgPerWeek: 5 }, dietStyle: 'balanced' });
   assert.equal(t.kcal, Math.round(2875 - 1.125 * 7700 / 7)); // clamped deficit
+});
+
+test('fatBounds spans fat floor to all non-protein calories', () => {
+  const t = { kcal: 2400, proteinG: 180, carbG: 240, fatG: 80 };
+  const b = fatBounds(t, 90);
+  assert.equal(b.min, Math.ceil(Math.max(0.6 * 90, 0.20 * 2400 / 9))); // 54
+  assert.equal(b.max, Math.floor((2400 - 180 * 4) / 9)); // 186
+  assert.ok(b.min <= b.max);
 });

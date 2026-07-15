@@ -42,6 +42,13 @@ export function fatFloorG(weightKg, kcal) {
   return Math.max(0.6 * weightKg, 0.20 * kcal / 9);
 }
 
+// Slider bounds for rebalancing fat↔carb at fixed kcal and protein.
+export function fatBounds(t, weightKg) {
+  const min = Math.ceil(fatFloorG(weightKg, t.kcal));
+  const max = Math.max(min, Math.floor((t.kcal - t.proteinG * 4) / 9));
+  return { min, max };
+}
+
 function splitCarbFat(kcal, proteinG, weightKg, dietStyle) {
   const floor = fatFloorG(weightKg, kcal);
   const rest = kcal - proteinG * 4; // kcal left for carbs + fat
