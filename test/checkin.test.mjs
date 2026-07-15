@@ -83,6 +83,37 @@ test('explanation contains the numbers', () => {
   assert.match(r.explanation, /-0\.40/);
   assert.match(r.explanation, /2380/);
 });
+test('untracked period holds and learns nothing', () => {
+  const r = runCheckin({ ...base, trackedAll: false, prevTdee: 2900 });
+  assert.equal(r.change, 'hold');
+  assert.equal(r.newTargets, null);
+  assert.equal(r.tdee, 2900);
+  assert.equal(r.compliantStreak, 0);
+  assert.match(r.explanation, /not fully tracked/i);
+});
+test('untracked beats the data gate', () => {
+  const r = runCheckin({ ...base, trackedAll: false, loggedDays: 2, weighinCount: 1 });
+  assert.equal(r.change, 'hold');
+});
+test('4-day early check-in: TDEE from actual period length', () => {
+  // obs -0.24 kg over 4 days → -0.42 kg/wk vs target -0.45 → inside 20% deadband
+  const r = runCheckin({ ...base, periodDays: 4, loggedDays: 4, weighinCount: 3,
+    trendStartKg: 90.24, trendEndKg: 90.0 });
+  assert.equal(r.change, 'hold');
+  assert.equal(r.tdee, 2842); // 2380 + 0.24*7700/4
+  assert.match(r.explanation, /over 4 days/);
+});
+test('short periods shrink the smoothing step', () => {
+  const r = runCheckin({ ...base, periodDays: 4, loggedDays: 4, weighinCount: 3,
+    trendStartKg: 90.24, trendEndKg: 90.0, prevTdee: 3000 });
+  assert.equal(r.tdee, Math.round(3000 + 0.25 * (4 / 7) * (2842 - 3000))); // 2977
+});
+test('4-day rate normalization catches an off-target weekly rate', () => {
+  // obs -0.06 over 4 days → -0.105 kg/wk vs -0.45 → adjust
+  const r = runCheckin({ ...base, periodDays: 4, loggedDays: 4, weighinCount: 3,
+    trendStartKg: 90.06, trendEndKg: 90.0 });
+  assert.equal(r.change, 'adjust');
+});
 test('applyKcalChange scales carbs/fat pro-rata', () => {
   const t = applyKcalChange({ kcal: 2400, proteinG: 180, carbG: 240, fatG: 80 }, 2250);
   assert.equal(t.proteinG, 180);

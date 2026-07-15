@@ -10,9 +10,10 @@ export function targetRateKgPerWeek(goal, weightKg) {
   return 0; // maintain, reverse
 }
 
-export function smoothTdee(prev, weekTdee, streakBefore) {
+export function smoothTdee(prev, weekTdee, streakBefore, periodDays = 7) {
   if (prev == null || !Number.isFinite(prev)) return weekTdee;
-  const alpha = streakBefore >= 3 ? 0.15 : 0.25; // long compliance → wider window
+  const base = streakBefore >= 3 ? 0.15 : 0.25; // long compliance → wider window
+  const alpha = base * Math.min(periodDays, 7) / 7; // short periods are noisy → smaller step
   return prev + alpha * (weekTdee - prev);
 }
 
@@ -27,20 +28,32 @@ export function applyKcalChange(t, newKcal) {
 const fmtKg = (v) => `${v >= 0 ? '+' : ''}${v.toFixed(2)}`;
 
 export function runCheckin(i) {
+  const days = Math.max(1, i.periodDays ?? 7);
+  if (i.trackedAll === false) {
+    return {
+      change: 'hold', newTargets: null, tdee: i.prevTdee ?? null, compliantStreak: 0,
+      explanation: 'You said this period was not fully tracked — nothing learned, targets held. ' +
+        'Track everything you eat and check in again.',
+    };
+  }
   if (i.loggedDays < 4 || i.weighinCount < 3) {
     return {
       change: 'insufficient', newTargets: null, tdee: i.prevTdee ?? null, compliantStreak: 0,
-      explanation: `Only ${i.loggedDays}/7 fully-logged days and ${i.weighinCount} weigh-ins (need 4 and 3). ` +
+      explanation: `Only ${i.loggedDays}/${days} fully-logged days and ${i.weighinCount} weigh-ins (need 4 and 3). ` +
         `Not enough data to coach honestly — targets held; log more this week.`,
     };
   }
-  const obs = i.trendEndKg - i.trendStartKg; // kg over the week
-  const weekTdee = i.avgIntakeKcal - (obs * KCAL_PER_KG) / 7;
-  const tdee = Math.round(smoothTdee(i.prevTdee, weekTdee, i.compliantStreak ?? 0));
+  const obs = i.trendEndKg - i.trendStartKg; // kg over the period
+  const obsWeekly = (obs * 7) / days; // normalized for rate comparisons
+  const weekTdee = i.avgIntakeKcal - (obs * KCAL_PER_KG) / days;
+  const tdee = Math.round(smoothTdee(i.prevTdee, weekTdee, i.compliantStreak ?? 0, days));
   const streak = (i.compliantStreak ?? 0) + 1;
   const target = targetRateKgPerWeek(i.goal, i.weightKg);
-  const nums = `Trend ${fmtKg(obs)} kg this week vs target ${fmtKg(target)}; ` +
-    `average intake ${Math.round(i.avgIntakeKcal)} kcal/day; estimated TDEE ${tdee} kcal.`;
+  const nums = days === 7
+    ? `Trend ${fmtKg(obs)} kg this week vs target ${fmtKg(target)}; ` +
+      `average intake ${Math.round(i.avgIntakeKcal)} kcal/day; estimated TDEE ${tdee} kcal.`
+    : `Trend ${fmtKg(obs)} kg over ${days} days (${fmtKg(obsWeekly)} kg/week) vs target ${fmtKg(target)}; ` +
+      `average intake ${Math.round(i.avgIntakeKcal)} kcal/day; estimated TDEE ${tdee} kcal.`;
 
   const hold = (msg) =>
     ({ change: 'hold', newTargets: null, tdee, compliantStreak: streak, explanation: `${msg} ${nums}` });
@@ -58,7 +71,7 @@ export function runCheckin(i) {
   };
 
   if (i.goal.type === 'reverse') {
-    if (obs <= 0.001 * i.weightKg) return adjust(i.targets.kcal + 100, 'Reverse diet on track — nudging calories up.');
+    if (obsWeekly <= 0.001 * i.weightKg) return adjust(i.targets.kcal + 100, 'Reverse diet on track — nudging calories up.');
     return hold('Gaining faster than the reverse-diet tolerance — holding until the trend settles.');
   }
   if (i.goal.type === 'maintain') {
@@ -69,7 +82,7 @@ export function runCheckin(i) {
       `Trend drifted ${dir > 0 ? 'below' : 'above'} the maintenance band — steering back.`);
   }
   // lose / gain
-  const miss = obs - target;
+  const miss = obsWeekly - target;
   const inBand = (target !== 0 && Math.abs(miss) <= 0.2 * Math.abs(target)) || Math.abs(miss) < 0.001 * i.weightKg;
   if (inBand) return hold('On track — within the deadband.');
   return adjust(tdee + (target * KCAL_PER_KG) / 7, 'Off the target rate — adjusting toward it.');
