@@ -34,14 +34,25 @@ async function gather() {
   return { settings, targets: latestTargets(allTargets), weighins, logs, checkins };
 }
 
-function isDue(settings, checkins, today) {
+export function isDue(settings, checkins, today) {
   const last = checkins[0]?.date ?? settings.onboardedAt;
   const since = daysBetween(last, today);
   return since >= 8 || (dowMon(today) === settings.checkInDay && since >= 6);
 }
 
+// Check-ins unlock 4 days after the last one; "due" keeps its original meaning.
+export function checkinAvailability(settings, checkins, today) {
+  if (checkins[0]?.date === today) return { status: 'done', since: 0 };
+  const last = checkins[0]?.date ?? settings.onboardedAt;
+  const since = last ? daysBetween(last, today) : Infinity;
+  if (since < 4) return { status: 'wait', since, daysLeft: 4 - since };
+  return { status: isDue(settings, checkins, today) ? 'due' : 'early', since };
+}
+
 export function buildInputs({ settings, targets, weighins, logs, checkins }, today) {
-  const start = addDays(today, -6);
+  const lastCkDate = checkins[0]?.date ?? settings.onboardedAt;
+  const periodDays = lastCkDate ? Math.min(Math.max(daysBetween(lastCkDate, today), 1), 14) : 7;
+  const start = addDays(today, -(periodDays - 1));
   const trend = computeTrend(weighins);
   const inWin = (d) => d >= start && d <= today;
   const winTrend = trend.filter((t) => inWin(t.date));
@@ -58,6 +69,7 @@ export function buildInputs({ settings, targets, weighins, logs, checkins }, tod
     trendStartKg, trendEndKg, avgIntakeKcal,
     loggedDays: logged.length, weighinCount: winTrend.length,
     prevTdee: last?.tdee ?? null, compliantStreak: last?.compliantStreak ?? 0,
+    periodDays,
   };
 }
 
