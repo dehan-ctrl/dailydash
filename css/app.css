@@ -43,7 +43,7 @@ h1 { font-size: 1.45rem; } h2 { font-size: 1.1rem; } h3 { font-size: .95rem; }
 #view {
   flex: 1; min-height: 0; width: 100%; max-width: 480px; margin: 0 auto;
   overflow-y: auto; -webkit-overflow-scrolling: touch; overscroll-behavior-y: contain;
-  padding: calc(14px + env(safe-area-inset-top)) 14px calc(90px + env(safe-area-inset-bottom));
+  padding: calc(14px + env(safe-area-inset-top)) 14px calc(104px + env(safe-area-inset-bottom));
 }
 button, input, select, textarea, .chip, .pill { touch-action: manipulation; }
 button, #tabbar { -webkit-user-select: none; user-select: none; }
@@ -57,16 +57,22 @@ button, #tabbar { -webkit-user-select: none; user-select: none; }
 }
 .hero h2 { text-align: center; margin: 0; }
 
-/* tab bar */
+/* tab bar: floating rounded bar — the app background runs to the screen
+   edge underneath it, so there is no strip-plus-gap seam at the bottom */
 #tabbar {
-  position: fixed; bottom: 0; left: 0; right: 0; display: flex; z-index: 20;
-  background: color-mix(in srgb, var(--surface) 92%, transparent);
-  backdrop-filter: blur(14px); border-top: 1px solid var(--line);
-  padding-bottom: env(safe-area-inset-bottom);
+  position: fixed; left: 12px; right: 12px;
+  bottom: calc(env(safe-area-inset-bottom) + 10px);
+  max-width: 456px; margin: 0 auto;
+  display: flex; z-index: 20;
+  background: color-mix(in srgb, var(--surface) 88%, transparent);
+  backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);
+  border: 1px solid var(--line); border-radius: 26px;
+  box-shadow: 0 6px 22px rgb(9 20 34 / .14);
 }
 #tabbar button {
-  flex: 1; min-width: 0; padding: 11px 0 9px; background: none; border: 0;
+  flex: 1; min-width: 0; padding: 15px 0 12px; background: none; border: 0;
   color: var(--muted); font: inherit; font-size: .78rem; font-weight: 600;
+  border-radius: 26px;
 }
 #tabbar button.active { color: var(--accent); }
 body.onboarding #tabbar { display: none; }
@@ -190,12 +196,13 @@ button.loading::after {
   padding: 4px 6px 4px 14px;
 }
 .searchbar span { color: var(--muted); flex: none; }
-.searchbar input { border: 0; background: none; padding: 8px 0; flex: 1; min-width: 0; }
+.searchbar input { border: 0; background: none; padding: 8px 0; flex: 1 1 8rem; min-width: 0; font-size: 16px; }
 .searchbar input:focus { outline: none; }
 .scanicon {
   flex: none; border: 0; background: none; color: var(--muted);
   font-size: 1.2rem; padding: 6px 10px; min-height: 34px;
 }
+.searchgo { font-size: 1rem; padding-inline: 8px; }
 .pickertabs { display: flex; margin: 4px 0 10px; border-bottom: 1px solid var(--line); }
 .pickertabs button {
   flex: 1; background: none; border: 0; padding: 10px 0; font: inherit; font-weight: 600;
@@ -361,3 +368,28 @@ video.scanner { width: 100%; border-radius: var(--radius); background: #000; asp
 #ptr span { display: none; font-size: .82rem; font-weight: 700; color: var(--ok); padding: 0 2px; white-space: nowrap; }
 #ptr.done i { display: none; }
 #ptr.done span { display: inline; }
+
+/* check-in wizard */
+.ciwizard {
+  position: fixed; inset: 0; z-index: 30; background: var(--bg);
+  padding: calc(env(safe-area-inset-top) + 18px) 16px calc(env(safe-area-inset-bottom) + 24px);
+  overflow-y: auto; display: flex; flex-direction: column;
+}
+.ciwizard .closex { align-self: flex-end; flex: none; }
+.ciwizard .bigbtns { display: flex; flex-direction: column; gap: 10px; margin-top: 18px; }
+.calcdots { display: flex; gap: 8px; justify-content: center; margin: 32px 0; }
+.calcdots i { width: 10px; height: 10px; border-radius: 50%; background: var(--accent); animation: calcpulse 1s infinite ease-in-out; }
+.calcdots i:nth-child(2) { animation-delay: .18s; }
+.calcdots i:nth-child(3) { animation-delay: .36s; }
+@keyframes calcpulse { 0%, 100% { opacity: .25; transform: scale(.8); } 50% { opacity: 1; transform: scale(1); } }
+
+/* macro balance sheet */
+.ringsbtn { background: none; border: 0; padding: 0; display: block; }
+.balsheet {
+  position: fixed; inset: 0; z-index: 30; background: rgb(9 20 34 / .45);
+  display: flex; align-items: flex-end;
+}
+.balsheet .card {
+  width: 100%; margin: 0; border-radius: 16px 16px 0 0;
+  padding-bottom: calc(env(safe-area-inset-bottom) + 16px);
+}

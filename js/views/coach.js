@@ -6,9 +6,9 @@ import { latestTargets, activeTargets } from '../engine/targets.js';
 import { fmtWeight, lbToKg, kgToLb } from '../units.js';
 import { t, tExplain, locale, langChip, wireLangChip } from '../i18n.js';
 
-let root, ctx, preview = null, includeToday = true;
+let root, ctx, wizard = null, includeToday = true;
 
-export async function mount(el, c) { root = el; ctx = c; preview = null; render(); }
+export async function mount(el, c) { root = el; ctx = c; wizard = null; render(); }
 
 const daysBetween = (a, b) => Math.round((new Date(b + 'T12:00:00') - new Date(a + 'T12:00:00')) / 86400000);
 const GOAL_TITLES = { lose: 'Lose weight', gain: 'Gain weight', maintain: 'Maintain', reverse: 'Reverse diet' };
@@ -107,7 +107,7 @@ async function render() {
   const { settings, targets, checkins, weighins } = data;
   const today = dstr();
   const imp = settings.units === 'imperial';
-  const due = isDue(settings, checkins, today) && checkins[0]?.date !== today;
+  const avail = checkinAvailability(settings, checkins, today);
   const trend = computeTrend(weighins);
   const startW = trend[0], curW = trend.at(-1);
   const goalW = settings.goal.goalWeightKg;
@@ -153,7 +153,12 @@ async function render() {
       <button class="ghost" id="savewt">${t('Save')}</button>
     </div>
   </div>
-  ${due ? `<div class="banner spread">${t('Check-in is due')}<button class="ghost" id="run">${t('Run check-in')}</button></div>` : ''}
+  ${avail.status === 'done' ? `<div class="banner">${t('✓ Checked in today')}</div>`
+    : avail.status === 'wait' ? `<div class="banner spread">${avail.daysLeft === 1
+        ? t('Check-in unlocks tomorrow') : t('Check-in unlocks in {n} days', { n: avail.daysLeft })}
+        <button class="ghost" disabled>${t('Run check-in')}</button></div>`
+    : `<div class="banner spread">${avail.status === 'due' ? t('Check-in is due') : t('Early check-in available')}
+        <button class="ghost" id="run">${avail.status === 'due' ? t('Run check-in') : t('Early check-in')}</button></div>`}
   <h2 class="sectiontitle">${t('Current period')}</h2>
   <div class="card periodcard">
     <div class="spread"><span class="muted">${t('Last check in')}<br><b style="color:var(--text)">${fullDate(lastCk)}</b></span>
@@ -181,11 +186,12 @@ async function render() {
     <p class="muted">${t('Estimated TDEE: {n} kcal', { n: checkins[0]?.tdee ?? targets.tdee ?? '—' })}
       ${checkins[0] ? t('(learned from your data)') : t('(formula estimate)')}</p>
   </div>
-  <div id="flow"></div>
   <div class="card"><h2>${t('Check-in history')}</h2>
     ${checkins.map((r) => `<div class="checkin-rec"><div class="spread"><b>${r.date}</b>
       <span class="muted">${t(r.change)}${r.newTargets ? ` → ${r.newTargets.kcal} kcal` : ''}</span></div>
-      <p class="muted">${tExplain(r.explanation)}</p></div>`).join('') || `<p class="muted">${t('No check-ins yet.')}</p>`}
+      <p class="muted">${tExplain(r.explanation)}</p>
+      ${r.trackedAll != null ? `<p class="muted">${r.trackedAll ? '✓' : '✕'} ${t('tracked everything')} · ${r.metTargets ? '✓' : '✕'} ${t('met targets')}</p>` : ''}</div>`).join('')
+      || `<p class="muted">${t('No check-ins yet.')}</p>`}
   </div>`;
 
   wireLangChip(root, () => ctx.refresh());
@@ -200,37 +206,91 @@ async function render() {
     render();
   };
   const run = root.querySelector('#run');
-  if (run) run.onclick = () => {
-    const inputs = buildInputs(data, today);
-    preview = { date: today, inputs, result: runCheckin(inputs) };
-    renderFlow(data);
-  };
-  if (preview) renderFlow(data);
+  if (run) run.onclick = () => { wizard = { step: 1 }; renderWizard(data); };
+  if (wizard) renderWizard(data);
 }
 
-function renderFlow(data) {
-  const el = root.querySelector('#flow');
-  const { result } = preview;
-  el.innerHTML = `<div class="card"><h2>${t("This week's check-in")}</h2>
-    <p>${tExplain(result.explanation)}</p>
-    ${result.newTargets ? `<p><b>${t('New targets:')}</b> ${result.newTargets.kcal} kcal ·
-      P ${result.newTargets.proteinG} · C ${result.newTargets.carbG} · F ${result.newTargets.fatG}</p>` : ''}
-    ${result.newTargets && data.settings.targetMode === 'custom'
-      ? `<p class="hint">${t('Heads-up: you are on custom targets, so the coach update is recorded but your custom numbers stay in charge until you switch back in Settings.')}</p>` : ''}
-    <button class="primary" id="accept">${result.change === 'adjust' ? t('Apply new targets') : t('Record check-in')}</button></div>`;
-  el.querySelector('#accept').onclick = async () => {
-    const { date, inputs, result } = preview;
-    await ctx.db.put('checkins', {
-      date, inputs, change: result.change, explanation: result.explanation,
-      tdee: result.tdee, compliantStreak: result.compliantStreak,
-      oldTargets: data.targets, newTargets: result.newTargets,
-    });
-    if (result.newTargets) {
-      await ctx.db.put('targets', { ...result.newTargets, tdee: result.tdee, effectiveDate: date, reason: 'Weekly check-in' });
-      const plan = await ctx.db.get('planner', 'main');
-      if (plan) await ctx.db.put('planner', { ...plan, days: rescalePlan(plan.days, result.newTargets.kcal) }, 'main');
-    }
-    preview = null;
-    render();
-  };
+/* Guided check-in: tracked? → met targets? → calculating → result. */
+function renderWizard(data) {
+  const today = dstr();
+  let el = root.querySelector('.ciwizard');
+  if (!el) { el = document.createElement('div'); el.className = 'ciwizard wizard'; root.appendChild(el); }
+  const close = () => { if (wizard?.timer) clearTimeout(wizard.timer); wizard = null; el.remove(); };
+  const step = (n, title, body) => `
+    <button class="ghost closex" id="wclose" aria-label="${t('Close')}">✕</button>
+    <p class="stepnum">${t('Step {n} of 3', { n })}</p>
+    <h2>${title}</h2>${body}`;
+
+  if (wizard.step === 1) {
+    el.innerHTML = step(1, t('Did you track everything you ate this period?'),
+      `<p class="muted">${t('Be honest — the coach only learns from fully tracked days.')}</p>
+      <div class="bigbtns">
+        <button class="primary" id="wyes">${t('Yes')}</button>
+        <button class="ghost" id="wno">${t('No, some things are missing')}</button>
+      </div>`);
+    el.querySelector('#wyes').onclick = () => { wizard.trackedAll = true; wizard.step = 2; renderWizard(data); };
+    el.querySelector('#wno').onclick = () => { wizard.trackedAll = false; wizard.step = 2; renderWizard(data); };
+  } else if (wizard.step === 2) {
+    const lastCk = data.checkins[0]?.date ?? data.settings.onboardedAt;
+    const active = activeTargets(data.settings, data.targets);
+    const range = complianceRange(lastCk, today, true);
+    const stats = periodStats(data, range.from, range.to);
+    el.innerHTML = step(2, t('Did you meet your macro targets?'),
+      `${stats ? `<div class="card compliancecard">
+        <div class="comprow"><span class="muted">${range.label}</span><span class="tgt">${t('Targets')}</span><b>${t('Tracked (Avg)')}</b></div>
+        <div class="comprow"><span>${t('Cal')}</span><span class="tgt">${band(active.kcal)}</span><b>${Math.round(stats.kcal)}</b></div>
+        <div class="comprow"><span>${t('Protein')}</span><span class="tgt">${band(active.proteinG)}</span><b>${Math.round(stats.p)}g</b></div>
+        <div class="comprow"><span>${t('Carbs')}</span><span class="tgt">${band(active.carbG)}</span><b>${Math.round(stats.c)}g</b></div>
+        <div class="comprow"><span>${t('Fat')}</span><span class="tgt">${band(active.fatG)}</span><b>${Math.round(stats.f)}g</b></div>
+      </div>` : `<p class="muted">${t('Log some food to see period compliance.')}</p>`}
+      <div class="bigbtns">
+        <button class="primary" id="wyes">${t('Yes')}</button>
+        <button class="ghost" id="wno">${t('No')}</button>
+      </div>`);
+    const go = (met) => {
+      wizard.metTargets = met;
+      wizard.step = 3;
+      renderWizard(data);
+    };
+    el.querySelector('#wyes').onclick = () => go(true);
+    el.querySelector('#wno').onclick = () => go(false);
+  } else if (wizard.step === 3) {
+    el.innerHTML = step(3, t('Calculating…'), `<div class="calcdots"><i></i><i></i><i></i></div>`);
+    wizard.timer = setTimeout(() => {
+      if (!wizard) return;
+      wizard.inputs = { ...buildInputs(data, today), trackedAll: wizard.trackedAll };
+      wizard.result = runCheckin(wizard.inputs);
+      wizard.step = 4;
+      renderWizard(data);
+    }, 1400);
+  } else {
+    const { result } = wizard;
+    el.innerHTML = `
+      <button class="ghost closex" id="wclose" aria-label="${t('Close')}">✕</button>
+      <h2>${t('Check-in result')}</h2>
+      <p>${tExplain(result.explanation)}</p>
+      ${result.newTargets ? `<p><b>${t('New targets:')}</b> ${result.newTargets.kcal} kcal ·
+        P ${result.newTargets.proteinG} · C ${result.newTargets.carbG} · F ${result.newTargets.fatG}</p>` : ''}
+      ${result.newTargets && data.settings.targetMode === 'custom'
+        ? `<p class="hint">${t('Heads-up: you are on custom targets, so the coach update is recorded but your custom numbers stay in charge until you switch back in Settings.')}</p>` : ''}
+      <div class="bigbtns"><button class="primary" id="accept">${result.change === 'adjust' ? t('Apply new targets') : t('Record check-in')}</button></div>`;
+    el.querySelector('#accept').onclick = async () => {
+      const { inputs, result, trackedAll, metTargets } = wizard;
+      await ctx.db.put('checkins', {
+        date: today, inputs, change: result.change, explanation: result.explanation,
+        tdee: result.tdee, compliantStreak: result.compliantStreak,
+        trackedAll, metTargets,
+        oldTargets: data.targets, newTargets: result.newTargets,
+      });
+      if (result.newTargets) {
+        await ctx.db.put('targets', { ...result.newTargets, tdee: result.tdee, effectiveDate: today, reason: 'Weekly check-in' });
+        const plan = await ctx.db.get('planner', 'main');
+        if (plan) await ctx.db.put('planner', { ...plan, days: rescalePlan(plan.days, result.newTargets.kcal) }, 'main');
+      }
+      wizard = null;
+      render();
+    };
+  }
+  const x = el.querySelector('#wclose');
+  if (x) x.onclick = close;
 }
