@@ -79,6 +79,11 @@ export const TR = {
   'Consumed': 'Alınan', 'Remaining': 'Kalan',
   'Cal': 'Kalori', 'Protein': 'Protein', 'Carbs': 'Karbonhidrat', 'Fat': 'Yağ',
   'Using your custom targets (Settings → Macro targets).': 'Özel hedefleriniz kullanılıyor (Ayarlar → Makro hedefleri).',
+  'Macro balance': 'Makro dengesi',
+  'Adjust macro balance': 'Makro dengesini ayarla',
+  'Calories and protein stay fixed — slide to trade fat for carbs.':
+    'Kalori ve protein sabit kalır — yağ ile karbonhidratı takas etmek için kaydırın.',
+  '{pct}% fat': '%{pct} yağ', 'Save balance': 'Dengeyi kaydet',
   '📊 Planner': '📊 Planlayıcı',
   '{kcal} Cal, {p}p, {c}c, {f}f': '{kcal} Kal, {p}p, {c}k, {f}y',
   'Add to {meal}': '{meal} öğününe ekle',

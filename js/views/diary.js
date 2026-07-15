@@ -1,6 +1,7 @@
 import { dstr, addDays, dowMon } from '../util.js';
 import { dayMacros } from '../engine/planner.js';
-import { targetsFor, activeTargets } from '../engine/targets.js';
+import { editMacro, fatBounds } from '../engine/prescribe.js';
+import { targetsFor, activeTargets, latestTargets } from '../engine/targets.js';
 import { normalizeServings, portionPreview, servingIndexForEntry, entryFromPortion, reconcileCustomFood, customMacroSourceServing } from '../food/portion.js';
 import { buildCustomFood, customFoodForBarcode, normalizeBarcode } from '../food/custom.js';
 import { lookupBarcode, searchFoodsPage } from '../food/off.js';
@@ -17,7 +18,7 @@ import { createPickerState } from './diary-state.js';
 const tFood = (label) => (getLang() === 'tr' ? enFoodToTr(label) : label);
 
 const MEALS = ['Breakfast', 'Lunch', 'Dinner', 'Snacks'];
-let date = dstr(), root, ctx, settings, mode = 'consumed', sheet = null;
+let date = dstr(), root, ctx, settings, mode = 'consumed', sheet = null, balance = null;
 // sheet = {meal, tab, q, searchPage, hasMore, results, searching, locals,
 //          picked:{food, servingIdx, qty}|null, editEntry, editing, subform, recipeDraft, msg, scanning}
 
@@ -65,7 +66,7 @@ function summaryCard(tt, target) {
     <button data-mode="remaining" class="${mode === 'remaining' ? 'on' : ''}">${t('Remaining')}</button>
   </div>
   <div class="card"><div class="sumgrid">
-    ${ringsSvg(tt, target)}
+    <button class="ringsbtn" id="balance" aria-label="${t('Adjust macro balance')}">${ringsSvg(tt, target)}</button>
     <div class="sumrows">
       <div class="sumrow"><span><b style="font-weight:700">${t('Cal')}</b></span><b>${left(tt.kcal, target.kcal)}</b><span class="tgt">${target.kcal}</span></div>
       <div class="sumrow"><span><i class="dot p"></i>${t('Protein')}</span><b>${left(tt.p, target.proteinG)}</b><span class="tgt">${target.proteinG}</span></div>
@@ -107,6 +108,54 @@ async function render() {
   wire(log);
 }
 
+/* Bottom sheet: trade fat ↔ carbs at fixed kcal and protein. Edits the
+   current prescription (or custom targets), not the planner-shaped day. */
+function renderBalance() {
+  const { base, weightKg } = balance;
+  const b = fatBounds(base, weightKg);
+  let el = root.querySelector('.balsheet');
+  if (!el) { el = document.createElement('div'); el.className = 'balsheet'; root.appendChild(el); }
+  const nonP = base.kcal - base.proteinG * 4;
+  const dismiss = () => { balance = null; el.remove(); };
+  el.innerHTML = `<div class="card">
+    <h2>${t('Macro balance')}</h2>
+    <p class="muted">${t('Calories and protein stay fixed — slide to trade fat for carbs.')}</p>
+    <div class="spread"><span>${base.kcal} kcal · P ${base.proteinG} g</span><b id="balpct"></b></div>
+    <input type="range" id="balf" min="${b.min}" max="${b.max}" step="1"
+      value="${Math.min(Math.max(balance.fatG, b.min), b.max)}" aria-label="${t('Fat')}">
+    <div class="spread"><span><i class="dot c"></i>${t('Carbs')} <b id="balc"></b></span>
+      <span><i class="dot f"></i>${t('Fat')} <b id="balfg"></b></span></div>
+    <div class="row" style="margin-top:12px">
+      <button class="ghost" id="balcancel">${t('Cancel')}</button>
+      <button class="primary" id="balsave">${t('Save balance')}</button></div>
+  </div>`;
+  const upd = () => {
+    const next = editMacro(base, 'fatG', +el.querySelector('#balf').value, { weightKg }).targets;
+    balance.fatG = next.fatG;
+    el.querySelector('#balc').textContent = `${next.carbG} g`;
+    el.querySelector('#balfg').textContent = `${next.fatG} g`;
+    el.querySelector('#balpct').textContent = t('{pct}% fat', { pct: nonP > 0 ? Math.round((next.fatG * 9 / nonP) * 100) : 0 });
+  };
+  upd();
+  el.querySelector('#balf').oninput = upd;
+  el.querySelector('#balcancel').onclick = dismiss;
+  el.onclick = (e) => { if (e.target === el) dismiss(); };
+  el.querySelector('#balsave').onclick = async () => {
+    const s = await ctx.db.get('settings', 'main');
+    const next = editMacro(base, 'fatG', balance.fatG, { weightKg }).targets;
+    if (s.targetMode === 'custom' && s.customTargets?.kcal) {
+      s.customTargets = next;
+      await ctx.db.put('settings', s, 'main');
+      settings = s;
+    } else {
+      const latest = latestTargets(await ctx.db.getAll('targets'));
+      await ctx.db.put('targets', { ...next, tdee: latest.tdee, effectiveDate: dstr(), reason: 'Macro balance' });
+    }
+    dismiss();
+    render();
+  };
+}
+
 function entryPortionLabel(e) {
   if (e.unit === 'x') return t('quick add');
   if (e.servingLabel && e.grams > 0) return `${e.qty} × ${e.servingLabel}`;
@@ -131,6 +180,14 @@ function wire(log) {
   root.querySelectorAll('[data-nav]').forEach((b) => (b.onclick = () => { date = addDays(date, +b.dataset.nav); sheet = null; render(); }));
   root.querySelectorAll('[data-mode]').forEach((b) => (b.onclick = () => { mode = b.dataset.mode; render(); }));
   root.querySelector('#toplan').onclick = () => ctx.navigate('plan');
+  root.querySelector('#balance').onclick = async () => {
+    const s = await ctx.db.get('settings', 'main');
+    const base = activeTargets(s, latestTargets(await ctx.db.getAll('targets')));
+    const weighins = await ctx.db.getAll('weighins');
+    const weightKg = weighins.sort((a, b) => (a.date < b.date ? 1 : -1))[0]?.weightKg ?? 80;
+    balance = { base, weightKg, fatG: base.fatG };
+    renderBalance();
+  };
   root.querySelectorAll('[data-add]').forEach((b) =>
     (b.onclick = () => { openPicker(+b.dataset.add); }));
   root.querySelectorAll('[data-entry]').forEach((b) => (b.onclick = async () => {
