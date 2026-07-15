@@ -81,6 +81,7 @@ function summaryCard(tt, target) {
 
 async function render() {
   document.body.classList.toggle('picker-open', !!sheet);
+  if (balance) { balance = null; document.body.classList.remove('overlay-open'); } // re-render closes the sheet
   if (sheet) return renderPicker();
   const log = (await ctx.db.get('logs', date)) ?? blankLog();
   if (ensureEntryIds(log)) await ctx.db.put('logs', log);
@@ -115,8 +116,9 @@ function renderBalance() {
   const b = fatBounds(base, weightKg);
   let el = root.querySelector('.balsheet');
   if (!el) { el = document.createElement('div'); el.className = 'balsheet'; root.appendChild(el); }
+  document.body.classList.add('overlay-open'); // hide the tab bar under the sheet
   const nonP = base.kcal - base.proteinG * 4;
-  const dismiss = () => { balance = null; el.remove(); };
+  const dismiss = () => { balance = null; el.remove(); document.body.classList.remove('overlay-open'); };
   el.innerHTML = `<div class="card">
     <h2>${t('Macro balance')}</h2>
     <p class="muted">${t('Calories and protein stay fixed — slide to trade fat for carbs.')}</p>

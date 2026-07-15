@@ -75,7 +75,7 @@ button, #tabbar { -webkit-user-select: none; user-select: none; }
   border-radius: 26px;
 }
 #tabbar button.active { color: var(--accent); }
-body.onboarding #tabbar { display: none; }
+body.onboarding #tabbar, body.overlay-open #tabbar { display: none; }
 
 /* cards & layout */
 .card {

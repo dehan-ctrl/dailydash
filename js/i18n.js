@@ -196,7 +196,7 @@ export const TR = {
   'No, some things are missing': 'Hayır, bazı şeyler eksik',
   'Did you meet your macro targets?': 'Makro hedeflerinize uydunuz mu?',
   'Yes': 'Evet', 'No': 'Hayır',
-  'Calculating…': 'Hesaplanıyor…', 'Step {n} of 3': 'Adım {n}/3',
+  'Calculating…': 'Hesaplanıyor…', 'Step {n} of 3': 'Adım {n}/3', 'Done': 'Tamam',
   'Check-in result': 'Kontrol sonucu',
   'tracked everything': 'her şey kaydedildi', 'met targets': 'hedeflere uyuldu',
   'Current period': 'Bu dönem', 'Last check in': 'Son kontrol', 'Next check in': 'Sonraki kontrol',

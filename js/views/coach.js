@@ -215,7 +215,14 @@ function renderWizard(data) {
   const today = dstr();
   let el = root.querySelector('.ciwizard');
   if (!el) { el = document.createElement('div'); el.className = 'ciwizard wizard'; root.appendChild(el); }
-  const close = () => { if (wizard?.timer) clearTimeout(wizard.timer); wizard = null; el.remove(); };
+  document.body.classList.add('overlay-open'); // hide the tab bar under the wizard
+  const close = () => {
+    if (wizard?.timer) clearTimeout(wizard.timer);
+    wizard = null;
+    el.remove();
+    document.body.classList.remove('overlay-open');
+    render(); // the check-in may have been auto-recorded — refresh the page behind
+  };
   const step = (n, title, body) => `
     <button class="ghost closex" id="wclose" aria-label="${t('Close')}">✕</button>
     <p class="stepnum">${t('Step {n} of 3', { n })}</p>
@@ -256,11 +263,14 @@ function renderWizard(data) {
     el.querySelector('#wno').onclick = () => go(false);
   } else if (wizard.step === 3) {
     el.innerHTML = step(3, t('Calculating…'), `<div class="calcdots"><i></i><i></i><i></i></div>`);
-    wizard.timer = setTimeout(() => {
+    wizard.timer = setTimeout(async () => {
       if (!wizard) return;
       wizard.inputs = { ...buildInputs(data, today), trackedAll: wizard.trackedAll };
       wizard.result = runCheckin(wizard.inputs);
       wizard.step = 4;
+      // Holds count as done — record right away so the weekly cycle resets
+      // however the user leaves; only target changes need an explicit Apply.
+      if (wizard.result.change !== 'adjust') await recordCheckin(data, today);
       renderWizard(data);
     }, 1400);
   } else {
@@ -273,24 +283,29 @@ function renderWizard(data) {
         P ${result.newTargets.proteinG} · C ${result.newTargets.carbG} · F ${result.newTargets.fatG}</p>` : ''}
       ${result.newTargets && data.settings.targetMode === 'custom'
         ? `<p class="hint">${t('Heads-up: you are on custom targets, so the coach update is recorded but your custom numbers stay in charge until you switch back in Settings.')}</p>` : ''}
-      <div class="bigbtns"><button class="primary" id="accept">${result.change === 'adjust' ? t('Apply new targets') : t('Record check-in')}</button></div>`;
+      <div class="bigbtns"><button class="primary" id="accept">${result.change === 'adjust' ? t('Apply new targets') : t('Done')}</button></div>`;
     el.querySelector('#accept').onclick = async () => {
-      const { inputs, result, trackedAll, metTargets } = wizard;
-      await ctx.db.put('checkins', {
-        date: today, inputs, change: result.change, explanation: result.explanation,
-        tdee: result.tdee, compliantStreak: result.compliantStreak,
-        trackedAll, metTargets,
-        oldTargets: data.targets, newTargets: result.newTargets,
-      });
-      if (result.newTargets) {
+      if (result.change === 'adjust') {
+        await recordCheckin(data, today);
         await ctx.db.put('targets', { ...result.newTargets, tdee: result.tdee, effectiveDate: today, reason: 'Weekly check-in' });
         const plan = await ctx.db.get('planner', 'main');
         if (plan) await ctx.db.put('planner', { ...plan, days: rescalePlan(plan.days, result.newTargets.kcal) }, 'main');
       }
       wizard = null;
+      document.body.classList.remove('overlay-open');
       render();
     };
   }
   const x = el.querySelector('#wclose');
   if (x) x.onclick = close;
+}
+
+async function recordCheckin(data, today) {
+  const { inputs, result, trackedAll, metTargets } = wizard;
+  await ctx.db.put('checkins', {
+    date: today, inputs, change: result.change, explanation: result.explanation,
+    tdee: result.tdee, compliantStreak: result.compliantStreak,
+    trackedAll, metTargets,
+    oldTargets: data.targets, newTargets: result.newTargets,
+  });
 }

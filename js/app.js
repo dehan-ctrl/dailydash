@@ -16,7 +16,7 @@ export async function navigate(id) {
   const main = document.getElementById('view');
   main.innerHTML = '';
   main.scrollTop = 0;
-  document.body.classList.remove('picker-open');
+  document.body.classList.remove('picker-open', 'overlay-open');
   try {
     (await import(`./views/${id}.js`)).mount(main, ctx);
   } catch (e) {
